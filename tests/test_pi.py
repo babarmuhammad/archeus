@@ -1,7 +1,7 @@
 """pi as a third harness: its sessions, its projects, and what it cannot do.
 
 Everything here is built against a session pi actually wrote on this machine —
-`~/.pi/agent/sessions/--C--Users-mab-AppData-Local-Temp-piprobe--/<ts>_<uuid>
+`~/.pi/agent/sessions/--C--Users-user1-AppData-Local-Temp-piprobe--/<ts>_<uuid>
 .jsonl`, whose first line is `{"type":"session","version":3,"id":…,"cwd":…}`
 followed by `model_change`, `thinking_level_change` and `message` entries. The
 fixture is a fake; the schema is the one in the package's own

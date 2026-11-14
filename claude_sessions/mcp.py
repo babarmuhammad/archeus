@@ -3,6 +3,7 @@ import threading
 import time
 
 from .config import W, get_claude_exe, open_in_editor
+from .claude_md import block_span, well_formed
 from .sessions import get_session_info
 from .ui import (menu, _cls, pause, run_with_progress, text_input,
                  confirm, flash, paths_menu, pager)
@@ -184,16 +185,23 @@ def update_global_claude_md_mcp(mcp_name, tools_doc, cfgdir=None):
     existing = ''
     if os.path.exists(path):
         try:
-            existing = open(path, encoding='utf-8', errors='ignore').read()
+            # newline='' keeps CRLF outside the block; strict decoding refuses what it cannot round-trip
+            with open(path, encoding='utf-8', newline='') as f:
+                existing = f.read()
         except Exception:
-            pass
+            return False   # its text is unknown: not ours to replace
 
-    if start_tag in existing and end_tag in existing:
-        pre  = existing[:existing.index(start_tag)]
-        post = existing[existing.index(end_tag) + len(end_tag):]
-        final = pre + section + post
+    if not well_formed(existing, start_tag, end_tag):
+        return False   # stray markers: not ours to rewrite, same as unreadable
+    span = block_span(existing, start_tag, end_tag)
+    if span:
+        if block_span(existing[span[1]:], start_tag, end_tag):
+            return False   # a second pair under this name: which one is ours?
+        # the span stops before END's own line break, which existing[span[1]:] keeps
+        final = existing[:span[0]] + section.rstrip('\n') + existing[span[1]:]
     elif existing:
-        final = existing.rstrip('\n') + '\n\n' + section
+        eol = '\r\n' if '\r\n' in existing else '\n'
+        final = existing.rstrip('\r\n') + eol * 2 + section
     else:
         final = '# Global Claude Context\n<!-- Edit freely — MCP sections auto-updated -->\n\n' + section
 
@@ -359,10 +367,14 @@ def _mcp_add_with_extras(args, transport, name):
     extra = []
     if transport == 'stdio':
         env = text_input("Env vars KEY=VAL (space-separated, blank = none):")
+        if env is None:
+            return None, True
         for kv in env.split():
             extra += ['-e', kv]
     else:
         hdr = text_input("Header 'Name: value' (blank = none):")
+        if hdr is None:
+            return None, True
         if hdr:
             extra += ['-H', hdr]
     # insert extras before the trailing target/command

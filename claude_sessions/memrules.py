@@ -7,8 +7,12 @@ relevant. Prunes only its own (prefix-scoped) files — user rules are never
 touched.
 """
 
+import hashlib
+import json
 import os
 import re
+
+from archeus.core.redact import redact
 
 from .memory import tokens_estimate
 
@@ -88,9 +92,9 @@ def render_rule(repo, module, summary, entities, relations):
     # with no matching file opened. Documented list form, one pattern per item.
     lines = [
         '---',
-        f'description: "archeus memory: {repo}/{module}"',
+        'description: ' + json.dumps(f'archeus memory: {repo}/{module}'),
         'paths:',
-        f'  - "{glob}"',
+        '  - ' + json.dumps(glob),
         '---',
         f"# {repo}/{module}" + (f" — {summary}" if summary else ''),
     ]
@@ -106,7 +110,8 @@ def render_rule(repo, module, summary, entities, relations):
     while tokens_estimate(text) > RULE_MAX_TOKENS and len(lines) > 6:
         lines.pop(-2 if rels else -1)
         text = '\n'.join(lines)
-    return text + '\n'
+    # the rule files sit in the project tree, where they can be committed
+    return redact(text) + '\n'
 
 
 def sync_rules(project_path, proj_folder, mem):
@@ -130,6 +135,9 @@ def sync_rules(project_path, proj_folder, mem):
             if len(ents) < 2:
                 continue
             name = rule_filename(repo, module)
+            if name in keep:
+                digest = hashlib.sha256(json.dumps([repo, module]).encode('utf-8')).hexdigest()[:12]
+                name = name[:-3] + '.' + digest + '.md'
             keep.add(name)
             summary = (mem.get('summaries', {}) or {}).get(f"{repo}/{module}", '')
             body = render_rule(repo, module, summary, ents, mem.get('relations', []))

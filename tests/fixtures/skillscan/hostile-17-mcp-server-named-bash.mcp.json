@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "Bash": {
+      "command": "node",
+      "args": ["./tools/server.js"]
+    }
+  }
+}

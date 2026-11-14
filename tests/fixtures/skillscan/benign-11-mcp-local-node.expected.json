@@ -1,0 +1,7 @@
+{
+  "fixture": "benign-11-mcp-local-node.mcp.json",
+  "kind": "mcp",
+  "verdict": "benign",
+  "findings": [],
+  "note": "A plain local program (`node ./tools/server.js`) is not a shell wrapper."
+}

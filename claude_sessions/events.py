@@ -31,6 +31,8 @@ import os
 import re
 import time
 
+from archeus.core.redact import redact
+
 from . import config as _c
 
 __all__ = ['path', 'record', 'read', 'MAX_BYTES']
@@ -95,28 +97,29 @@ def record(src, msg, *, level='error', detail='', proj=''):
     failure should not also have to remember the budget.
     """
     try:
-        msg = str(msg or '').strip()
+        msg = redact(str(msg or '')).strip()
         if not msg:
             return False
+        src = redact(str(src or ''))
         level = level if level in LEVELS else 'error'
-        key = (str(src), _dedupe_shape(msg))
+        key = (src, _dedupe_shape(msg))
         now = time.time()
         last = _recent.get(key)
-        if last is not None and now - last < _DEDUPE_SEC:
+        if last is not None and 0 <= now - last < _DEDUPE_SEC:
             return False
-        _recent[key] = now
-        if len(_recent) > 500:                     # bounded memo, oldest out
-            for k, _ in sorted(_recent.items(), key=lambda kv: kv[1])[:250]:
-                _recent.pop(k, None)
         line = json.dumps({'ts': round(now), 'lvl': level,
-                           'src': str(src or '')[:40],
+                           'src': src[:40],
                            'msg': msg[:200],
-                           'detail': str(detail or '')[:1000],
-                           'proj': str(proj or '')[:80]}, ensure_ascii=False)
+                           'detail': redact(str(detail or ''))[:1000],
+                           'proj': redact(str(proj or ''))[:80]}, ensure_ascii=False)
         p = path()
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, 'a', encoding='utf-8') as f:
             f.write(line + '\n')
+        _recent[key] = now
+        if len(_recent) > 500:                     # bounded memo, oldest out
+            for k, _ in sorted(_recent.items(), key=lambda kv: kv[1])[:250]:
+                _recent.pop(k, None)
         _rotate(p)
         return True
     except Exception:
@@ -183,15 +186,21 @@ def _rotate(p):
         with open(p, 'rb') as f:
             f.seek(-_KEEP_BYTES, os.SEEK_END)
             tail = f.read()
-        tail = tail.split(b'\n', 1)[1] if b'\n' in tail else tail
+        # no newline means the cut landed inside one record: none of it is whole
+        tail = tail.split(b'\n', 1)[1] if b'\n' in tail else b''
         # bytes in, bytes out. Reading binary and writing TEXT lets Windows
         # translate the '\n' this joins with into '\r\n' on top of a '\r' the
         # decoded line already ended with, which leaves a stray carriage return
         # inside every record and an empty final line.
         lines = [ln for ln in tail.decode('utf-8', 'ignore').splitlines()
                  if ln.strip()]
-        with open(p, 'wb') as f:
-            f.write(('\n'.join(_thin(lines)) + '\n').encode('utf-8'))
+        body = ''.join(ln + '\n' for ln in _thin(lines)).encode('utf-8')
+        # written beside the log and swapped in, so an interrupted write leaves
+        # the old audit whole instead of an empty or half-written file
+        tmp = p + '.tmp'
+        with open(tmp, 'wb') as f:
+            f.write(body)
+        os.replace(tmp, p)
     except Exception:
         pass
 

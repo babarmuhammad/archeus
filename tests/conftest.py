@@ -21,9 +21,11 @@ a module-level pop is the only thing that runs early enough to reach it.
 The autouse fixture then covers the per-test case; `monkeypatch.setenv` inside a
 test still wins, because fixtures run before the test body.
 """
+import contextlib
 import glob
 import os
 import re
+import sys
 import urllib.parse
 import tempfile
 
@@ -250,6 +252,7 @@ def pytest_sessionfinish(session, exitstatus):
     thing it is cleaning up was created by a DETACHED grandchild process, and
     no in-process guard can promise to have covered every way to reach one.
     Belt and braces, and it reports rather than tidying up silently."""
+    ci_diag.record('session_end', census=ci_diag.census())
     leaked = _leaked_project_dirs()
     if not leaked:
         return
@@ -265,6 +268,10 @@ def pytest_configure(config):
         'markers', 'real_editor: allow this test to spawn a real editor process')
     config.addinivalue_line(
         'markers', 'real_process: allow this test to spawn a real child process')
+    config.addinivalue_line(
+        'markers', 'os_isolation: a G6 PV-20 scenario (fakes only; native rows are drafted)')
+    config.addinivalue_line(
+        'markers', 'real_config_freeze: keep the real repository configuration freeze off Windows')
 
 
 # ── nothing the USER owns may be written by a test ───────────
@@ -438,3 +445,59 @@ def _no_network(monkeypatch):
             return real(url, *a, **kw)
         raise OSError('the test suite does not reach the network: %s' % str(full)[:80])
     monkeypatch.setattr(urllib.request, 'urlopen', guarded)
+
+
+@pytest.fixture(autouse=True)
+def _config_freeze_seam(request, monkeypatch):
+    """Off Windows the guarded Git runner refuses every repository call, because the
+    configuration freeze is Windows-only. Many tests run real Git and expect an
+    answer, so off Windows they get a pass-through freeze that yields the argv
+    unchanged. Windows keeps the real freeze, and a test that asserts the refusal
+    opts out with the `real_config_freeze` marker."""
+    if sys.platform == 'win32' or request.node.get_closest_marker('real_config_freeze'):
+        return
+    from archeus.node import local
+
+    @contextlib.contextmanager
+    def passthrough(root, argv, env, run, empty):
+        yield argv
+    passthrough._seam = True
+    monkeypatch.setattr(local, '_frozen_config', passthrough)
+
+
+# ── CI performance diagnostics (off unless ARCHEUS_CI_DIAG is set) ───────────
+# One JSON line per test: its setup/call/teardown seconds and how many processes
+# this pytest process launched during it, plus a process census at the start of
+# every V1 module. `tools/ci_diag.py` summarises the file. See tests/ci_diag.py.
+
+import ci_diag  # noqa: E402
+
+_diag = {'module': None, 'launches': 0, 'phases': {}}
+
+
+def pytest_sessionstart(session):
+    ci_diag.install()
+    ci_diag.record('session_start', census=ci_diag.census())
+
+
+def pytest_runtest_logstart(nodeid, location):
+    if not ci_diag.enabled:
+        return
+    module = nodeid.split('::')[0]
+    if module != _diag['module']:
+        _diag['module'] = module
+        if module.startswith('tests/v1/'):
+            ci_diag.record('module_start', module=module, census=ci_diag.census())
+    _diag['launches'] = ci_diag.launches
+
+
+def pytest_runtest_logreport(report):
+    if not ci_diag.enabled:
+        return
+    ph = _diag['phases'].setdefault(report.nodeid, {'outcome': 'passed'})
+    ph[report.when] = round(report.duration, 3)
+    if report.outcome != 'passed' and ph['outcome'] == 'passed':
+        ph['outcome'] = '%s@%s' % (report.outcome, report.when)
+    if report.when == 'teardown':
+        ci_diag.record('test', id=report.nodeid, **_diag['phases'].pop(report.nodeid),
+                       launches=ci_diag.launches - _diag['launches'])

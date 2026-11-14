@@ -42,20 +42,25 @@ def _hooks_of(cfgdir):
 
     Keyed by (event, commands), so two entries running the same command on the
     same event collapse: you cannot install the same hook twice, and the diff is
-    about what is MISSING. `_n_hooks` is what the report counts, so the number
-    here agrees with the one the Hooks page shows.
+    about what is MISSING. The report counts with `_n_hooks` instead, which
+    keeps duplicates, as the Hooks page does.
     """
     from . import hooks as h
     out = {}
-    for event, block in (h._load(cfgdir).get('hooks') or {}).items():
+    for event, block in _hook_blocks(cfgdir).items():
         for entry in (block if isinstance(block, list) else []):
             out[(event, tuple(h._cmd_keys(entry)))] = entry
     return out
 
 
-def _n_hooks(cfgdir):
+def _hook_blocks(cfgdir):
     from . import hooks as h
-    return sum(len(b or []) for b in (h._load(cfgdir).get('hooks') or {}).values())
+    blocks = h._load(cfgdir).get('hooks')
+    return blocks if isinstance(blocks, dict) else {}  # a hand-edited settings.json can hold anything
+
+
+def _n_hooks(cfgdir):
+    return sum(len(b or []) for b in _hook_blocks(cfgdir).values())
 
 
 def _plugins_of(cfgdir):
@@ -265,6 +270,9 @@ def apply(d=None, kinds=KINDS, review=None, progress=None):
             step(name, 'statusline', msg, ok)
 
         for fn in (m['agents'] if 'agents' in want else []):
+            if fn not in u_agents:
+                step(name, 'agents', '%s (source no longer exists)' % fn, False)
+                continue
             dest_dir = os.path.join(cfgdir or _c.config_dir, 'agents')
             os.makedirs(dest_dir, exist_ok=True)
             try:
@@ -279,8 +287,12 @@ def apply(d=None, kinds=KINDS, review=None, progress=None):
             step(name, 'skills', sk if dest else '%s: copy failed' % sk, bool(dest))
 
         if 'claude_md' in want and m['claude_md'] and union_md:
+            target = _c.global_claude_md_for(cfgdir)
+            if os.path.exists(target):
+                step(name, 'claude_md', '%s (already exists, left as is)' % os.path.basename(union_md), False)
+                continue
             text = open(union_md, encoding='utf-8', errors='ignore').read()
-            ok = _c.write_atomic(_c.global_claude_md_for(cfgdir), text)
+            ok = _c.write_atomic(target, text)
             step(name, 'claude_md', os.path.basename(union_md), ok)
 
     return done

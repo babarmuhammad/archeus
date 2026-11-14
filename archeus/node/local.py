@@ -1,0 +1,2778 @@
+"""The local execution node (execution-architecture §9; p11-design-gate §5).
+
+Everything P11 does to the world outside the database goes through here:
+spawning through an adapter, the process registry, checks and kills by process
+identity, the per-execution control flags, the e-stop sentinel, the hook
+mailbox, the few git reads the boundary checks need, and worktrees.
+
+It never opens the database, never evaluates policy and never routes (a
+boundary test holds it to that): it is what a remote node would be, in-process.
+
+A process is identified by (pid, create_time), never by a pid alone
+(p11-design-gate §15.1): every liveness check and kill re-reads the creation
+time through the P0.5 seam `proc.process_create_time`.
+"""
+
+import contextlib
+import functools
+import hashlib
+import json
+import math
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import weakref
+
+from claude_sessions import config, proc
+
+from ..core.domain import ids
+from ..harnesses import base, hook
+from ..infra.paths import (ExecPaths, VerifyPaths, archeus_home, processes_registry,
+                           refused_component, repo_store, repos_dir, run_dir, seed_staging,
+                           stop_sentinel)
+from . import isolation as isolation_mod
+from .staging import _entry, _present
+from . import staging
+from . import linkscan
+from .win32_mxc import INVALID_HANDLE, Win32Api
+from . import mxc, mxc_cancel, mxc_ledger, mxc_native, mxc_outcome, mxc_resources, mxc_watchdog
+
+#: every worktree Core makes or removes checks out paths past MAX_PATH; the
+#: user's own config is never written, only this one command's (T-078)
+_WORKTREE = ('-c', 'core.longpaths=true', 'worktree')
+#: Git for Windows refuses a worktree whose `.git` path is longer than this
+#: ("'$GIT_DIR' too big"), and core.longpaths does not lift it (measured, T-077);
+#: no such cap elsewhere
+GIT_DIR_MAX = 220 if os.name == 'nt' else None
+#: the deepest path a store holds, below the store itself: refs/archeus/incoming/
+#: exec/<execution id>/import.lock (70). Git for Windows writes no object or ref
+#: past MAX_PATH even with core.longpaths (measured, T-115d), so the store's own
+#: path is capped instead
+STORE_TAIL = 70
+STORE_MAX = 259 - STORE_TAIL if os.name == 'nt' else None
+#: the longest ref a fetch may write into a store: its incoming ref and that ref's
+#: lock (os.sep + refs/archeus/incoming/<rest>.lock) stay within STORE_TAIL. Core's
+#: longest, refs/archeus/exec/<execution id>/import, is exactly this long
+REF_MAX = STORE_TAIL - len(os.sep + 'incoming/' + '.lock')
+
+
+class PathTooLong(OSError):
+    """A worktree Git would refuse for its path's length alone."""
+
+
+def check_worktree_path(path):
+    """Raise PathTooLong, before anything is made, when *path*'s `.git` is
+    past GIT_DIR_MAX: that refusal is the same on every attempt."""
+    git_dir = os.path.join(os.path.abspath(path), '.git')
+    if GIT_DIR_MAX is not None and len(git_dir) > GIT_DIR_MAX:
+        raise PathTooLong('the worktree %s needs a .git path of %d characters; Git for Windows '
+                          'accepts at most %d. Set ARCHEUS_HOME to a shorter folder'
+                          % (path, len(git_dir), GIT_DIR_MAX))
+
+#: control flags the hook reads (P11 PAUSE/STOP; P12 HANDOFF, p12-design-gate §10.1)
+FLAGS = ('PAUSE', 'STOP', 'HANDOFF')
+#: Core's own git identity for the snapshot commit and merges (P13 §12), set per
+#: command so the user's configuration is never read or changed
+CORE_GIT_NAME, CORE_GIT_EMAIL = 'Archeus', 'archeus@localhost'
+#: the tail of a check's output kept as evidence (p13-design-gate §8.2)
+CHECK_OUTPUT_KEEP = 256 * 1024
+
+# PV-20 K1 (T-046 and its correction C-1013-T046): Core's own Git store, run by one
+# pinned runner. The pins remove Git's configured execution points; they do not
+# make Git a sandbox for hostile objects.
+
+#: the oldest Git that honours every pin `_store_pin` sets: GIT_NO_LAZY_FETCH
+#: first appears in the 2.45.0 git(1) manual and is absent from v2.44.0's git.c
+#: and promisor-remote.c; `--attr-source`/GIT_ATTR_SOURCE from 2.41.0,
+#: GIT_CONFIG_GLOBAL/SYSTEM earlier (absent from 2.31.0)
+STORE_GIT_FLOOR = (2, 45, 0)
+#: every store is created SHA-1, so this is the empty tree its attributes come from
+EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+#: a store's HEAD: unborn, so no tree of its content is ever "the current one"
+STORE_HEAD = 'ref: refs/archeus/none\n'
+#: the plumbing `store_read` may run in a trusted store
+STORE_READS = ('rev-parse', 'cat-file', 'ls-tree', 'merge-base', 'diff')
+#: per mode, the only subcommands the runner starts
+_STORE_ARGS = {'version': ('version',), 'init': ('init',), 'seal': ('symbolic-ref', 'mktree'),
+               'trusted': STORE_READS + ('fetch', 'update-ref'), 'base': ('rev-parse',),
+               'seed': ('fetch', 'update-ref', 'symbolic-ref', 'read-tree', 'ls-files',
+                        'rev-parse'),
+               'import': ('fast-import',)}
+#: exactly the config `init --bare` writes, whole: one [core] section, its keys
+#: in Git's order, each once. Observed at 2.49.0.windows.1 (T-048): format 0,
+#: filemode false, bare true, symlinks false, ignorecase true; symlinks,
+#: ignorecase and precomposeunicode are platform probes written only when found
+_INIT_CONFIG = re.compile(r'\[core\]\n\trepositoryformatversion = 0\n\tfilemode = (true|false)\n'
+                          r'\tbare = true\n(\tsymlinks = false\n)?(\tignorecase = true\n)?'
+                          r'(\tprecomposeunicode = true\n)?')
+_REF = re.compile(r'refs/[A-Za-z0-9_][A-Za-z0-9_./-]*')
+#: what a source's config may not say at all (case-insensitive bytes, fail
+#: closed: a value that merely contains one is refused too): includes, promisor
+#: remotes and partial clones (lazy fetch from them), another object format, a
+#: ref backend other than files, and alternate-ref commands
+_SOURCE_CONFIG_REFUSED = (b'include', b'promisor', b'partialclone', b'objectformat',
+                          b'refstorage', b'alternaterefs')
+#: a pack fetched from a promisor remote: its repository lazy-fetches
+_PROMISOR_PACK = '.promisor'
+#: a `.git` file larger than this is refused (Git reads up to 1 MiB: setup.c
+#: read_gitfile_gently); no path Core resolves is anywhere near it
+_GITFILE_MAX = 64 * 1024
+#: a hook request or answer is a tool call's JSON; a file past this is not parsed
+MAX_REQUEST_BYTES = hook.MAX_REQUEST_BYTES
+
+# PV-20 K2 (T-049 and its correction C-1013-T049): an isolated execution's seed,
+# built by Core outside the execution area and renamed in. Every bound below is
+# checked before the write it guards; one breached refuses the whole seed.
+SEED_MAX_ENTRIES = 100000
+SEED_MAX_BYTES = 2 * 1024 ** 3
+SEED_MAX_DEPTH = 64
+#: a file's whole Windows path, long-path support assumed absent
+SEED_MAX_PATH = 259
+#: one `ls-tree -l` or `ls-files -s` record as received, and so the whole listing
+SEED_MAX_RECORD = 4200
+#: seconds for the whole seed; each Git call also keeps its own timeout
+SEED_DEADLINE = 300
+#: the stdout read size of the byte core; stderr keeps this much and drops the rest
+_CHUNK, _STDERR_KEEP = 64 * 1024, 4096
+#: mode -> type an entry may have; 120000 and 160000 seeded inertly (owner Q1, A)
+_SEED_KINDS = {'100644': 'blob', '100755': 'blob', '120000': 'blob', '160000': 'commit'}
+#: the seed's .git/config, exactly: no remote, include or filter
+SEED_CONFIG = (b'[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n'
+               b'\tbare = false\n\tsymlinks = false\n\tautocrlf = false\n')
+#: the seed's .git holds exactly these, and nothing else
+_SEED_META = frozenset(('HEAD', 'config', 'shallow', 'index', 'objects', 'refs'))
+#: a task branch, one segment under archeus/ (manager: archeus/<mission>.<key>)
+_SEED_BRANCH = re.compile(r'archeus/[A-Za-z0-9_][A-Za-z0-9_.-]*')
+
+
+class StoreError(OSError):
+    """A store, its pin or a Git call cannot be trusted: refused, nothing kept back."""
+
+
+class NoSuchRevision(StoreError):
+    """`rev-parse --verify -q` found nothing: exit 1 and no message, which is how Git says
+    a revision is absent. Every other failure of the call is a plain StoreError."""
+
+
+#: how long an ended execution gets to empty its Job before the end is called
+#: unverified (audit §2 'Cancellation': an empty Job is a reading, never a proof)
+MXC_QUIESCENCE_WAIT_S = 5.0
+MXC_QUIESCENCE_POLL_S = 0.05
+#: how long past the quiescence bound the whole ending may take before its read-back
+#: is no longer trusted (mxc_cancel reports it timed out)
+MXC_READBACK_WAIT_S = 30.0
+#: the one tier the launcher is admitted at (mxc.effective_identity)
+_MXC_TIER = 'base-container'
+#: launches that have passed their resource record and not ended: two of them on one
+#: ledger never share an execution id or a process. Weak, so a launch nobody ends
+#: cannot hold a process hostage
+_MXC_LIVE = weakref.WeakSet()
+_MXC_LIVE_LOCK = threading.Lock()
+#: execution ids being started right now, per ledger: the journal check and the intent
+#: write are two steps, and this closes the gap between them. UNVERIFIED: the ledger has
+#: no exclusive create, so a second Core process on the same directory is not excluded
+#: (the ledger's own rule is one Core writer per directory)
+_MXC_CLAIMS = set()
+_MXC_CLAIMS_LOCK = threading.RLock()     # reentrant: a sweep holds it over `mxc_busy`
+
+
+def mxc_resource_id(path):
+    """The form a grant's path takes in a resource record, which refuses whitespace
+    and control characters; a read-back reports its effective grants in this form."""
+    return ''.join('%%%04X' % ord(ch) if ch.isspace() or ch == '%' or ord(ch) < 32
+                   or ord(ch) == 127 else ch for ch in path)
+
+
+def mxc_busy(ledger):
+    """The journals of *ledger* a launch of this Core is starting or running: a restart
+    reconciliation reads a journal that has no completion yet as an end nobody verified,
+    which is what those are not."""
+    key = os.path.normcase(os.path.abspath(ledger.root))
+    with _MXC_CLAIMS_LOCK, _MXC_LIVE_LOCK:
+        return ({journal for claimed, journal in _MXC_CLAIMS if claimed == key}
+                | {launch.journal for launch in _MXC_LIVE
+                   if launch.end_state is None and launch._ledger_key() == key})
+
+
+def mxc_reconcile(ledger, process_reader, resource_reader):
+    """`Ledger.reconcile` over the journals no launch of this Core is starting or running.
+    No launch can claim an id while the sweep holds the claims lock, so a journal the sweep
+    reads without a claim is one nobody is writing."""
+    with _MXC_CLAIMS_LOCK:
+        return ledger.reconcile(process_reader, resource_reader, skip=mxc_busy(ledger))
+
+
+#: the variables of an isolated environment that name the execution's own folders
+_MXC_OWN_DIRS = frozenset(('TEMP', 'TMP', 'USERPROFILE', 'HOME', 'APPDATA', 'LOCALAPPDATA',
+                           'CLAUDE_CONFIG_DIR'))
+
+
+def mxc_env(env, *, writable, readonly, path):
+    """`base._isolated_env`'s map as the policy's explicit environment, built for the
+    container and not for the host: each folder variable must lie in a writable grant (a
+    host profile value would name a place the container cannot reach), SYSTEMROOT stays the
+    Windows directory Core derived, and PATH is replaced by *path*, entries that are staged
+    read-only or under SYSTEMROOT, never the host's PATH and never a writable place the
+    agent could plant a program in."""
+    def inside(value, roots):
+        try:
+            return any(mxc._within(mxc._path(value), root) for root in roots)
+        except mxc.MxcUnavailable:
+            return False
+
+    writable, readonly = [mxc._path(p) for p in writable], [mxc._path(p) for p in readonly]
+    out, system = {}, None
+    for key, value in env.items():
+        name = key.upper()
+        if name in _MXC_OWN_DIRS and not inside(value, writable):
+            raise staging.StageError('%s is not inside the execution folders' % key)
+        if name == 'SYSTEMROOT':
+            system = value
+        if name != 'PATH':
+            out[key] = value
+    try:
+        system = mxc._path(system)
+    except mxc.MxcUnavailable:
+        raise staging.StageError('SYSTEMROOT must be an absolute Windows directory') from None
+    path = list(path)
+    if not path or not all(inside(entry, readonly + [system])
+                           and not inside(entry, writable) for entry in path):
+        raise staging.StageError('PATH must name staged read-only folders or SYSTEMROOT')
+    out['PATH'] = os.pathsep.join(path)
+    return out
+
+
+class MxcLaunch:
+    """One MXC execution, wired to the native transport and to Core's ledger.
+
+    Everything it can touch is injected: the Win32 api, Core's boundary, the ledger,
+    the pinned schema validator, the broker, the resource reader, the clock. With no
+    ledger it stays the thin wrapper it was (an injected backend plus an outcome
+    reader); with one, a launch is a journalled sequence and this is the only order it
+    may take (audit §2 'Lifecycle gaps', slices 5, 6, 8):
+
+        intent (flushed) -> create suspended -> PID and creation time read ->
+        assigned to the Job -> membership verified -> ownership (flushed) ->
+        resumed exactly once
+
+    The resume is reached only past a durable ownership record: a ledger write that
+    fails leaves the suspended child terminated, never resumed, every handle closed.
+    Ending is mxc_cancel's order and verdict — revoke the broker admission, end the Job
+    through the caller's `end_job` callback, or the boundary's `terminate_job` when none is
+    given (it terminates the Job, it must not close it),
+    wait a bounded time for the Job to report no member, read the owned resources back,
+    then record the completion or the quarantine.
+
+    The caller owns the Job from its creation to its close: this object reads the
+    member count through the handle it was handed and never closes it, so the caller's
+    own fence or teardown closes it exactly once, and that close is what ends a tree
+    that is still running. It also retains admission, identity validation, and the
+    teardown of anything this object never started.
+
+    UNVERIFIED: native workload-result framing is not frozen. The outcome reader must
+    be Core-owned and bound to this process, never an execution-written file, and a
+    missing or unverified outcome never reports success. The MXC contract supplies no
+    owned-resource disposal or read-back call, so none is invented: only an injected
+    reader can make an end clean, and without one the end is quarantined.
+    """
+
+    def __init__(self, *, backend=None, sdk_root, pins=None, outcome, workspace, readonly=(),
+                 denied=(), cwd, command_line, env=None, timeout_ms, api=None,
+                 boundary=None, ledger=None, schema_validator=None, execution_id=None,
+                 broker=None, resource_reader=None, disposal=None, clock=time.monotonic,
+                 pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S,
+                 workload_reader=None, workload_expected=None, readback=None,
+                 end_job=None, watchdog=None, seed_stage=None, seed_recheck=None,
+                 process_seq=1, writable=(), transport=None, ui=False, proxy_url=None,
+                 capabilities=None, switches=None):
+        if (type(quiescence_wait) not in (int, float) or not math.isfinite(quiescence_wait)
+                or quiescence_wait < 0):
+            raise staging.StageError('MXC needs a finite, non-negative quiescence bound')
+        if workload_reader is not None and not (callable(workload_reader)
+                                                and callable(workload_expected)):
+            raise staging.StageError('a workload reader needs the identity this launch issued')
+        if not callable(outcome) and workload_reader is None:
+            raise staging.StageError('MXC requires a Core-owned outcome reader')
+        native = any(part is not None for part in (api, boundary, ledger, schema_validator))
+        journal = None
+        if ledger is None and (readback is not None or watchdog is not None):
+            # both run in the ownership seam, which only a journalled launch has
+            raise staging.StageError('a read-back or a watchdog needs a journalled launch')
+        if (seed_stage is None) != (seed_recheck is None) or not (
+                seed_stage is None or ledger is not None and callable(seed_stage)
+                and callable(seed_recheck)):
+            raise staging.StageError('a seed stager and its re-check come together and need a '
+                                     'journalled launch')
+        if native:
+            if backend is not None:
+                raise staging.StageError('MXC launch takes the native parts or a backend, '
+                                         'not both')
+            if api is None or boundary is None or ledger is None or schema_validator is None:
+                raise staging.StageError('a journalled MXC launch needs the api, the boundary, '
+                                         'the ledger and the pinned schema validator')
+            try:
+                journal = mxc_ledger.journal_name(execution_id, process_seq)
+            except ValueError:
+                raise staging.StageError('MXC launch needs an execution id and process '
+                                         'generation the ledger can name') from None
+            # one transport, built from the injected parts and nothing else
+            backend = mxc_native.Backend(api, boundary, schema_validator,
+                                         switches=switches, **(transport or {}))
+        elif backend is None:
+            raise staging.StageError('MXC launch needs an explicitly injected backend')
+        self.backend, self.boundary, self.ledger = backend, boundary, ledger
+        self.broker, self.resource_reader, self.disposal = broker, resource_reader, disposal
+        self.execution_id, self.journal = execution_id, journal
+        self.clock, self.pause = clock, pause
+        self.quiescence_wait = quiescence_wait
+        self.sdk_root, self.outcome = sdk_root, outcome
+        self.workload_reader, self.workload_expected = workload_reader, workload_expected
+        self.bound, self.readback, self._resource = None, readback, None
+        self._end_job = end_job if end_job is not None else getattr(boundary, 'terminate_job',
+                                                                    None)
+        self.watchdog = watchdog
+        self.seed_stage, self.seed_recheck = seed_stage, seed_recheck
+        self.verdict = self.facts = self._quiet_why = None
+        #: why the owner of the drain stopped it: the drain's own end records it
+        self.stop_reason = None
+        self.pins = staging.mxc_sdk_pins() if pins is None else dict(pins)
+        readonly, denied = tuple(readonly), tuple(denied)
+        staging.verify_mxc(sdk_root, pins=self.pins)
+        linkscan.check_grants((workspace,) + readonly, staging.StageError)
+        staging.scan_grants((workspace,) + readonly)
+        writable = tuple(writable)
+        linkscan.check_grants(writable, staging.StageError)
+        staging.scan_grants(writable)
+        self.policy: 'mxc.MxcPolicy' = backend.compile_policy(
+            workspace=(workspace,) + writable if writable else workspace,
+            readonly=readonly, denied=denied, cwd=cwd,
+            command_line=command_line, env=dict(env or {}), timeout_ms=timeout_ms,
+            ui=ui, egress='deny', proxy_url=proxy_url, capabilities=capabilities)
+        self.process, self.job = None, None
+        self.launcher_exit, self.completed, self.end_state = None, None, None
+        self._started = self._ended = False
+        self._end_lock = threading.RLock()   # a callback that cancels again is told nothing new
+        self._digest = None
+
+    # ── the journalled start ──
+
+    def start(self, *, job):
+        if self._started or self._ended:
+            raise staging.StageError('MXC launch already consumed')
+        if job is None:
+            raise staging.StageError('MXC requires a Core-held Job')
+        claim = self._claim()
+        try:
+            return self._start_claimed(job)
+        finally:
+            if claim is not None:
+                with _MXC_CLAIMS_LOCK:
+                    _MXC_CLAIMS.discard(claim)
+
+    def _claim(self):
+        if self.ledger is None:
+            return None
+        claim = (self._ledger_key(), self.journal)
+        with _MXC_CLAIMS_LOCK:
+            if claim in _MXC_CLAIMS:
+                raise staging.StageError('MXC execution id is already being started')
+            _MXC_CLAIMS.add(claim)
+        return claim
+
+    def _start_claimed(self, job):
+        if self.ledger is not None and self.journal in self.ledger.journals():
+            # a journal means this execution id already ran, or half-ran: reconciled at
+            # restart, never re-adopted by starting it a second time
+            raise staging.StageError('MXC execution id already has a ledger journal')
+        exe = staging.verify_mxc(self.sdk_root, pins=self.pins)
+        fs = self.policy.raw['filesystem']
+        grants = tuple(fs.get('readwritePaths', ())) + tuple(fs.get('readonlyPaths', ()))
+        linkscan.check_grants(grants, staging.StageError)
+        staging.scan_grants(grants)
+        self._started, self.job = True, job
+        try:
+            self._record_intent()                     # (1) durable before anything is created
+            if self.seed_stage is not None:
+                self.seed_stage()
+            self.process = self.backend.spawn(self.policy, exe=exe, job=job, **self._seam())
+            if self._ended:                           # cancel() ran while the child was made
+                self.process.terminate()
+                raise staging.StageError('MXC launch was ended while it started')
+        except BaseException:
+            # whatever got created is ended here, and the fault is the caller's to report
+            self._end(reason='launch failed', outcome=None)
+            raise
+        return self
+
+    def _seam(self):
+        """The one hook the transport owes the ledger, passed only when there is a ledger
+        to write: a backend with no journal has no ownership fact to make durable."""
+        return {} if self.ledger is None else {'before_resume': self._record_ownership}
+
+    def _requested_digest(self):
+        """The digest of the *requested* policy, in the ledger's own canonical form:
+        requested is what Core asked for, never what the backend answered."""
+        if self._digest is None:
+            self._digest = hashlib.sha256(mxc_ledger._json(self.policy.raw)).hexdigest()
+        return self._digest
+
+    def _record_intent(self):
+        """(1) The create intent is on disk before anything is created: a lost create
+        reply is then a restart reconciliation, never a process nobody saw."""
+        if self.ledger is None:
+            return
+        self.ledger.append(self.journal, 'intent',
+                           requested_policy_digest=self._requested_digest(),
+                           planned=[str(path) for key in ('readwritePaths', 'readonlyPaths',
+                                                           'deniedPaths')
+                                    for path in self.policy.raw['filesystem'].get(key, ())],
+                           applied=[], observed={})
+
+    def _record_ownership(self, child):
+        """(6) The transport calls this after membership was verified and before it
+        resumes: the launcher runs only once this write is flushed, and a ledger that
+        cannot take it means the child is terminated instead. UNVERIFIED: no owned MXC
+        resource can be read back, so without an injected read-back applied, observed
+        and owned stay empty rather than reporting the requested inventory as an answer
+        from the backend. With one, the launcher is resumed only if what it read back
+        is what was requested, and no other live launch on this ledger shares the id
+        or the process."""
+        if self.ledger is None:
+            return
+        if self._ended:
+            raise staging.StageError('MXC launch was ended before it resumed')
+        record = self._resource_record(child)
+        self._separate(record)
+        self.ledger.append(self.journal, 'ownership', pid=child.pid,
+                           create_time=child.create_time,
+                           requested_policy_digest=self._requested_digest(),
+                           applied=[{'resource': res, 'access': acc}
+                                    for res, acc in record.applied_grants],
+                           observed=(mxc_resources.effective_policy(record)
+                                     if record.observed is not None else {}), owned=[])
+        if self.watchdog is not None:                 # a refusal here still ends the child
+            self.watchdog.record({'execution_id': self.journal, 'pid': child.pid,
+                                  'create_time': child.create_time, 'job_ref': self.job})
+        if self.seed_recheck is not None:             # the very last act: the resume follows
+            self.seed_recheck()
+
+    def _resource_record(self, child):
+        fs = self.policy.raw['filesystem']
+        planned = {'backend': self.policy.raw['containment'], 'tier': _MXC_TIER,
+                   'grants': [{'resource': mxc_resource_id(path), 'access': access}
+                              for key, access in (('readwritePaths', 'rw'),
+                                                  ('readonlyPaths', 'ro'),
+                                                  ('deniedPaths', 'deny'))
+                              for path in fs.get(key, ())]}
+        applied, observed = [], None
+        if self.readback is not None:
+            facts = self.readback(child)
+            if type(facts) is not dict or set(facts) != {'applied', 'observed'}:
+                raise staging.StageError('the resource read-back is malformed')
+            applied, observed = facts['applied'], facts['observed']
+        record = mxc_resources.build_record(
+            execution_id=self.journal, pid=child.pid, create_time=child.create_time,
+            planned=planned, applied=applied, observed=observed)
+        if self.readback is not None:
+            differences = mxc_resources.observed_matches_requested(record)
+            if differences:
+                raise staging.StageError('the resources read back differ from the request: %s'
+                                         % '; '.join(differences))
+        return record
+
+    def _separate(self, record):
+        with _MXC_LIVE_LOCK:
+            for other in list(_MXC_LIVE):
+                held = other._resource
+                if (other is not self and other._ledger_key() == self._ledger_key()
+                        and other.end_state is None and held is not None
+                        and (held.execution_id == record.execution_id
+                             or (held.pid, held.create_time)
+                             == (record.pid, record.create_time))):
+                    raise staging.StageError('another live execution shares this execution '
+                                             'id or process')
+            self._resource = record
+            _MXC_LIVE.add(self)
+
+    def _ledger_key(self):
+        return os.path.normcase(os.path.abspath(self.ledger.root))
+
+    # ── the streams, and the two exits that are never mixed up ──
+
+    @property
+    def pid(self):
+        return self.process.pid
+
+    @property
+    def stdin(self):
+        return self.process.stdin
+
+    @property
+    def stdout(self):
+        return self.process.stdout
+
+    @property
+    def stderr(self):
+        return self.process.stderr
+
+    def terminate(self):
+        if self.process is not None:
+            self.process.terminate()
+
+    def wait(self, timeout=None, *, cancelled=None):
+        """The launcher exit and the workload outcome are two readings, kept apart: the
+        first is the transport's own, the second comes only from the Core-owned reader.
+        Anything that stops the drain first ends the execution instead."""
+        if self.process is None:
+            raise staging.StageError('MXC launch has not started')
+        try:
+            self.launcher_exit = (self.process.wait(timeout, cancelled=cancelled)
+                                  if cancelled is not None else self.process.wait(timeout))
+        except mxc_native.AlreadyDraining:        # the live drain is not this caller's to end
+            raise
+        except BaseException:
+            self._end(reason=self.stop_reason or 'launcher ended during the drain', outcome=None)
+            raise
+        if type(self.launcher_exit) is not int:
+            self._end(reason='launcher never exited', outcome=None)
+            raise staging.StageError('MXC launcher has not exited')
+        try:
+            code = self._workload_code()
+        except BaseException:
+            self._end(reason='the outcome reader failed', outcome=None)
+            raise
+        if type(code) is not int:
+            # launcher 0 is the launcher's own report, and says nothing about the workload
+            state = self.bound.state if self.bound is not None else None
+            self._end(reason='launcher exited without a workload outcome'
+                      if state is None else 'workload outcome %s' % state, outcome=None)
+            raise staging.StageError('MXC workload outcome is unavailable'
+                                     + ('' if state is None else ': %s' % state))
+        self.completed = code
+        self._end(reason='launcher exited', outcome=code)
+        return code
+
+    def _workload_code(self):
+        """The exit code the end may record, or None. With a workload reader the code
+        is the one bind_outcome binds to the identity this launch issued and only a
+        SUCCEEDED binding yields one; any other state is not an outcome. Without one,
+        the Core-owned outcome callable decides, as before."""
+        if self.workload_reader is None:
+            return self.outcome(self.process)
+        try:
+            expected = self.workload_expected()
+        except Exception:
+            expected = None
+        self.bound = mxc_outcome.bind_outcome(
+            self.launcher_exit, lambda: self.workload_reader(self.process), expected)
+        return self.bound.workload_exit if self.bound.succeeded else None
+
+    def cancel(self, *, reason='cancelled', outcome=None):
+        """Stop an execution and say how far the stop was verified. Idempotent: a second
+        call reports the first ending instead of ending anything twice (from another
+        thread, once that ending is over; from one of its own callbacks, None)."""
+        return self._end(reason=reason, outcome=outcome)
+
+    # ── the ending, in the order the audit froze (audit §2 'Cancellation') ──
+
+    def _end(self, *, reason, outcome):
+        """The order and the verdict are mxc_cancel's: revoke, end the Job through the
+        caller's own callback, wait for quiescence through the open handle, read the
+        owned resources back, record. Only a verified disposal of an execution whose
+        workload outcome was observed ends clean; every other verdict is quarantined."""
+        with self._end_lock:                                 # cancel and the drain race here
+            if self._ended:
+                return self.end_state
+            self._ended = True
+            self._quiet_why = self.verdict = self.facts = None
+            fatal = None
+            try:
+                self.verdict = mxc_cancel.cancel(
+                    self.execution_id, self._revoke, self._end_job_step, self._wait_step,
+                    self._read_back_step,
+                    lambda execution, verdict, facts: self._record(verdict, facts, reason,
+                                                                   outcome),
+                    clock=self.clock, wait_s=self.quiescence_wait + MXC_READBACK_WAIT_S)
+            except BaseException as err:
+                self._quarantine('the ending did not finish: %s' % type(err).__name__)
+                fatal = None if isinstance(err, Exception) else err
+            clean = self.verdict == mxc_cancel.DISPOSED_VERIFIED
+            self.end_state = {'state': mxc_ledger.DEAD_CLEAN if clean
+                              else mxc_ledger.DEAD_UNVERIFIED,
+                              'reason': reason, 'quiescence': self._quiescence_text()}
+            if fatal is not None:
+                raise fatal
+            return self.end_state
+
+    def _revoke(self, execution=None):
+        if self.broker is not None:                          # admission first: no new request
+            self.broker.revoke(self.execution_id)
+
+    def _end_job_step(self, execution):
+        """The caller's own callback ends the tree (it must terminate the Job, never
+        close it: the count is still to be read through the open handle). Our handles
+        go whether or not it worked."""
+        try:
+            if self._end_job is not None and self.job is not None:
+                self._end_job(self.job)
+        finally:
+            close = getattr(self.process, 'close', None)     # our handles, never the Job's
+            if close is not None:
+                close()
+
+    def _wait_step(self, execution, deadline):
+        """True once the Job reports no member within the bound, False when it still
+        has some at the bound, and a raise when it cannot be read at all. The count is
+        read through the caller's still open handle, as the isolation fence does; a
+        boundary that cannot answer leaves the end unverified, it never proves
+        cleanliness."""
+        self._quiet_why = None
+        if self.boundary is None or self.job is None:
+            self._quiet_why = 'no boundary Job was held to read'
+            raise OSError(self._quiet_why)
+        count = getattr(self.boundary, 'job_active_processes', None)
+        if count is None:
+            self._quiet_why = 'the boundary supplies no Job process count'
+            raise OSError(self._quiet_why)
+        limit = self._now() + self.quiescence_wait
+        while True:
+            try:
+                n = count(self.job)
+            except Exception as err:
+                self._quiet_why = 'the Job count failed: %s' % type(err).__name__
+                raise
+            if type(n) is int and n == 0:
+                return True
+            if self._now() >= limit:
+                self._quiet_why = 'the Job answered %r, not zero members' % (n,)
+                return False
+            self.pause(MXC_QUIESCENCE_POLL_S)
+
+    def _now(self):
+        now = self.clock()
+        if type(now) not in (int, float) or not math.isfinite(now):
+            self._quiet_why = 'the clock gave no usable reading'
+            raise OSError(self._quiet_why)
+        return now
+
+    def _read_back_step(self, execution):
+        """True only when the injected reader verified every owned resource absent: it
+        receives the returned ownership, never the planned grants. An empty Job is not
+        disposal verified: with no reader, or any answer but True or a list of what is
+        still owned, this end is not clean."""
+        if self.ledger is None:
+            return None
+        owner = self._owner()
+        if self.disposal is not None:
+            self.disposal(owner)
+        if self.resource_reader is None:
+            return None
+        answer = self.resource_reader(self.journal, owner)
+        if answer is True or (isinstance(answer, (list, tuple)) and answer):
+            return answer
+        return None
+
+    def _owner(self):
+        rows, invalid = mxc_ledger.read_records(
+            self.ledger.journals().get(self.journal, b''), self.journal)
+        if invalid or [row['op'] for row in rows] != ['intent', 'ownership']:
+            raise ValueError('verified ownership required')
+        return rows[-1]
+
+    def _record(self, verdict, facts, reason, outcome):
+        """What mxc_cancel asks to be persisted, and the verdict that really was. A
+        verified disposal is journalled only for an observed workload outcome; every
+        other ending is a quarantine, and a journal that refuses either write is one
+        too."""
+        if verdict is None:                      # the read of what is already on record
+            if self.ledger is None or not self._quarantined():
+                return None
+            return mxc_cancel.QUARANTINE_UNVERIFIED
+        self.facts = facts
+        if verdict != mxc_cancel.DISPOSED_VERIFIED:
+            self._quarantine('%s: %s' % (verdict, self._quiescence_text() or
+                                         ', '.join('%s %s' % item
+                                                   for item in sorted(facts['faults'].items()))
+                                         or 'not verified'))
+            return verdict
+        if outcome is None:
+            self._quarantine('no workload outcome was observed (%s)' % reason)
+            return mxc_cancel.QUARANTINE_UNVERIFIED
+        try:
+            self._stand_down()
+            self.ledger.append(self.journal, 'disposal', verified_absent=True)
+            self.ledger.complete(self.journal, outcome)
+        except Exception as err:
+            self._quarantine('completion unrecorded: %s' % type(err).__name__)
+            return mxc_cancel.QUARANTINE_UNVERIFIED
+        return verdict
+
+    def _stand_down(self):
+        """A clean end retires the watchdog only if it is still armed, so it never fired
+        or lost its reading while this launch ran, and only if this launch is the one job
+        it holds: a watchdog shared with other jobs stays armed for them."""
+        if self.watchdog is None:
+            return
+        report = self.watchdog.report()
+        if report['state'] != mxc_watchdog.ARMED:
+            raise staging.StageError('the watchdog is %s: %s' % (report['state'],
+                                                                report['reason']))
+        if report['recorded'] == [self.journal]:
+            self.watchdog.stand_down('launch ended')
+
+    def _quiescence_text(self):
+        faults = (self.facts or {}).get('faults', {})
+        steps = ['%s %s' % (name, faults[name]) for name in ('revoke_admission', 'end_job')
+                 if name in faults]
+        parts = (['an ending step failed: %s' % ', '.join(steps)] if steps else []) + (
+            [self._quiet_why] if self._quiet_why else [])
+        return '; '.join(parts) or None
+
+    def _quarantine(self, why):
+        """The evidence that an end was not verified. The quarantine is written once, and
+        a quarantine that cannot be written never turns an unverified end into a clean
+        one: the state stays DEAD_UNVERIFIED either way."""
+        if self.ledger is None:
+            return
+        try:
+            if self._quarantined():
+                return
+            self.ledger.append(self.journal, 'quarantine',
+                               reason=str(why)[:200] or 'end unverified')
+        except Exception:
+            pass                                       # the ledger keeps what it could
+
+    def _quarantined(self):
+        if self.ledger is None:
+            return True
+        rows, _ = mxc_ledger.read_records(
+            self.ledger.journals().get(self.journal, b''), self.journal)
+        return any(row['op'] == 'quarantine' for row in rows)
+
+
+class CutText(str):
+    """Text read up to a byte cap; `cut` is True when the source had more."""
+    cut = False
+
+
+class LocalNode:
+    id = None       # the local node (ADR-0008): no ExecutionNode row in V1
+
+    def command_context(self, execution_id, workdir, cwd):
+        # Current isolation does not attest POSIX program resolution and startup environment.
+        return None
+
+    #: what the hook reads (P11 PAUSE/STOP; P12 HANDOFF) — see FLAGS below
+    def __init__(self, isolation=None, heartbeat=None, *, boundary=None, authorize=None,
+                 plan=None, switches=None):
+        #: Core's isolation authority for this process (PV-20 §3.7): the per-execution
+        #: identities, the Jobs only Core holds, the quarantine ledger. Injected by the
+        #: synthetic fixtures; the production node gets the real boundary, which
+        #: dispatches nothing isolated while production dispatch stays E's.
+        self.isolation = isolation if isolation is not None else isolation_mod.Isolation(
+            self, boundary=boundary, authorize=authorize, plan=plan, switches=switches)
+        #: the B13 heartbeat sender, or None: the manager's sweep is Core's one beat
+        self.heartbeat = heartbeat
+
+    # ── processes ──
+
+    def spawn(self, adapter, spec, *, isolated, resume_state=None):
+        """Start one process of an execution (its first, or a resume) and record
+        it in the registry. Raises base.SpawnFailed / base.AlreadySpawned.
+
+        `isolated` (PV-20 §3.4) is the decision Core's manager took from this node's
+        isolation authority before the workspace and the inventory; it is required,
+        so nothing here can take a second one that disagrees. An isolated
+        execution's registry line carries the identity it ran under — the instrument,
+        never the authority (§3.7); the Job Core holds is the authority.
+        """
+        self.clear_flags(spec.execution_id)
+        if isolated and spec.isolation is None:
+            spec = self._isolate(spec)
+        try:
+            handle = (adapter.start(spec) if resume_state is None
+                      else adapter.resume(spec, resume_state))
+        except base.SpawnWriteFailed:
+            # Core's own write failed, not the isolation: the manager charges it
+            # `workspace` (T-102), so it is not recorded as isolation_failed
+            raise
+        except base.SpawnFailed as err:
+            # the deterministic state of an isolation-establishment failure: the
+            # record, the registry line and the tombstone agree on the reason, so a
+            # Core that restarts into it reads what this one knew (§3.7, O7)
+            self.isolation.note_failure(spec, err)
+            raise
+        line = {'op': 'spawn', 'execution_id': spec.execution_id,
+                'process_seq': spec.process_seq, 'pid': handle.pid,
+                'create_time': handle.create_time, 'argv0': adapter.id,
+                'started_at': time.time()}
+        if spec.isolation is not None:
+            line.update(spec.isolation.facts())
+        try:
+            self._registry(line)
+        except OSError as err:
+            adapter.stop(handle, grace_s=0.0)
+            raise base.SpawnWriteFailed('process registry line not written: %s' % err) from err
+        return handle
+
+    def _isolate(self, spec):
+        """The isolated launch for one execution's process, riding on the spec into
+        `base.spawn` (§3.4: the new mechanism behind the existing seam). The plan is
+        Core's, never the adapter's."""
+        return __import__('dataclasses').replace(
+            spec, isolation=self.isolation.request_for(spec))
+
+    # ── isolation (§3.2 Cleanup, §3.7) ──
+
+    def isolation_record(self, execution_id):
+        """Core's isolation record of an execution, or None. The one thing a restarted
+        Core reads to know an execution was isolated — never a file the execution
+        could have written (§3.3)."""
+        return self.isolation.record(execution_id)
+
+    def _running(self, execution_id, pid=None):
+        """The isolated children Core still holds for an execution (those of *pid* alone
+        when given: a stale handle never names the process that came after it)."""
+        return [child for (eid, _), child in list(self.isolation.children.items())
+                if eid == execution_id and child.poll() is None
+                and (pid is None or child.pid == pid)]
+
+    def fence_isolation(self, execution_id):
+        """Quiescence before an import (K3): None, or why there is none. The
+        execution's Job is closed either way."""
+        for child in self._running(execution_id):
+            child.cancel('fenced')
+        return self.isolation.fence(execution_id)
+
+    def end_isolation(self, execution_id, *, reason=''):
+        """The execution is over: identity torn down, whatever will not go quarantined
+        (§3.2 Cleanup). S1 applies no access, so nothing is revoked. Safe on an
+        execution that was never isolated."""
+        for child in self._running(execution_id):
+            child.cancel(reason or 'ended')
+        for key in [k for k in self.isolation.children if k[0] == execution_id]:
+            del self.isolation.children[key]
+        return self.isolation.teardown(execution_id, reason=reason)
+
+    def reclaim_isolation(self, live_execution_ids=()):
+        """Boot and every pass: quarantine retried, stale identities reclaimed (§3.7),
+        and the ledger's journals read for the ends no Core verified. Returns the
+        executions it released."""
+        if self.heartbeat is not None:
+            self.heartbeat.beat()
+        released = self.isolation.reclaim(live_execution_ids)
+        self.isolation.reconcile_ledger()
+        return released
+
+    @staticmethod
+    def handle(execution):
+        """The recorded identity of an execution's current process, or None."""
+        if execution.pid is None:
+            return None
+        return base.ProcessHandle(execution.id, execution.pid, execution.create_time,
+                                  ExecPaths(execution.id).dir)
+
+    @staticmethod
+    def alive(handle):
+        """Is the recorded process still that process? Unknown create time: no."""
+        return (handle is not None and handle.create_time is not None
+                and proc.process_create_time(handle.pid) == handle.create_time)
+
+    def kill(self, adapter, handle, reason='stopped'):
+        """'killed' (a kill was issued), 'gone' (nothing of ours is running) —
+        a pid now held by another process is never touched. An isolated process Core
+        holds ends through its launch, which records *reason*; only one it does not
+        hold (every end after a restart) is killed by its identity."""
+        if handle is None:
+            return 'gone'
+        running = self._running(handle.execution_id, handle.pid)
+        for child in running:
+            child.cancel(reason)
+        if running:
+            return 'killed'
+        if not self.alive(handle):
+            return 'gone'
+        try:
+            adapter.stop(handle, grace_s=0.0)
+        except base.StopRefused:
+            return 'gone'           # the pid was recycled: ours has exited
+        return 'killed'
+
+    def kill_identity(self, handle, reason='stopped'):
+        """Kill a process of ours known only by its recorded identity, no adapter to
+        ask: True when a kill was issued; a pid now held by another process is never
+        touched."""
+        running = self._running(handle.execution_id, handle.pid)
+        for child in running:
+            child.cancel(reason)
+        return bool(running) or proc.kill_pid_tree(handle.pid, handle.create_time)
+
+    def cancelled(self, handle, process_seq):
+        """Did a stop of Core's end this isolated process, as opposed to the process
+        ending on its own? Read before `ended` lets go of it."""
+        child = self.isolation.children.get((handle.execution_id, process_seq))
+        return child is not None and child.reason is not None
+
+    def ended(self, handle, exit_code, process_seq):
+        """The exit was observed: the `ended` tombstone and the registry's end."""
+        child = self.isolation.children.pop((handle.execution_id, process_seq), None)
+        if child is not None:
+            child.cancel('ended')       # its launch has ended by now; this makes it certain
+        _ANSWERED.pop(handle.execution_id, None)
+        paths = ExecPaths(handle.execution_id)
+        if not os.path.exists(paths.ended):
+            base.mark_ended(paths, exit_code)
+        self._registry({'op': 'end', 'execution_id': handle.execution_id,
+                        'process_seq': process_seq, 'ended_at': time.time()})
+
+    @staticmethod
+    def files(execution_id):
+        """(marker, pid.json, ended?) of the process I/O contract."""
+        paths = ExecPaths(execution_id)
+        return (base.read_json(paths.spawning), base.read_json(paths.pid),
+                os.path.exists(paths.ended))
+
+    # ── the registry (§15.2) ──
+
+    def _registry(self, line):
+        path = processes_registry()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(line, sort_keys=True) + '\n')
+
+    @staticmethod
+    def registry():
+        """Every registry line, oldest first (lines that are not JSON objects skipped)."""
+        try:
+            with open(processes_registry(), encoding='utf-8') as f:
+                raw = f.read().splitlines()
+        except FileNotFoundError:
+            return []
+        out = []
+        for line in raw:
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict):
+                out.append(row)
+        return out
+
+    @classmethod
+    def unended(cls):
+        """The registry's spawn lines with no end line: what may still run."""
+        lines = cls.registry()
+        ended = {(x.get('execution_id'), x.get('process_seq')) for x in lines
+                 if x.get('op') == 'end'}
+        return [x for x in lines if x.get('op') == 'spawn'
+                and (x.get('execution_id'), x.get('process_seq')) not in ended]
+
+    def compact_registry(self):
+        """Keep only processes with no end line (boot, §15.2)."""
+        text = ''.join(json.dumps(x, sort_keys=True) + '\n' for x in self.unended())
+        os.makedirs(run_dir(), exist_ok=True)
+        config.write_atomic(processes_registry(), text)
+
+    # ── control flags and the e-stop sentinel (§10.2, §13) ──
+
+    @staticmethod
+    def set_flag(execution_id, flag):
+        assert flag in FLAGS
+        d = ExecPaths(execution_id).ctl
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, flag), 'w', encoding='utf-8') as f:
+            f.write(str(time.time()))
+
+    @staticmethod
+    def clear_flags(execution_id):
+        d = ExecPaths(execution_id).ctl
+        for flag in FLAGS:
+            try:
+                os.remove(os.path.join(d, flag))
+            except FileNotFoundError:
+                pass
+
+    @staticmethod
+    def precompacted(execution_id):
+        """The PreCompact backstop fired (the hook wrote it; p12-design-gate §13.1)."""
+        return os.path.exists(os.path.join(ExecPaths(execution_id).req, 'precompact.json'))
+
+    @staticmethod
+    def disarmed():
+        return os.path.exists(stop_sentinel())
+
+    @staticmethod
+    def engage_estop():
+        """The sentinel first: every hook halts on it even if Core dies next."""
+        os.makedirs(run_dir(), exist_ok=True)
+        with open(stop_sentinel(), 'w', encoding='utf-8') as f:
+            f.write(json.dumps({'at': time.time()}))
+
+    @classmethod
+    def estop_without_core(cls):
+        """The e-stop with Core down or unreachable (execution-architecture §10
+        path 2, p11-design-gate §13.4): the sentinel first, so every hook halts
+        on it and a Core starting meanwhile comes up disarmed, then a kill of
+        every registry process that has no end line and is still the process
+        recorded (pid and create_time; a reused pid is never touched).
+        Returns (killed, not_running) as lists of registry lines.
+
+        Isolated processes are covered here too: with Core gone the Job's only holder
+        is gone, so kill-on-close has already ended those trees (§3.7); this kill is
+        the belt for what outlived it, and never the authority.
+        """
+        cls.engage_estop()
+        killed, gone = [], []
+        for x in cls.unended():
+            (killed if proc.kill_pid_tree(x.get('pid'), x.get('create_time')) else gone).append(x)
+        return killed, gone
+
+    @staticmethod
+    def clear_estop():
+        try:
+            os.remove(stop_sentinel())
+        except FileNotFoundError:
+            pass
+
+    # ── the hook mailbox (§10.2) ──
+
+    @staticmethod
+    def pending_requests(execution_id):
+        """[(seq, request)] with no answer yet, lowest seq first. An unreadable
+        request is returned as None, so Core can answer it (fail closed). Only
+        Core's own answer in class 2 answers a request: an answer the execution
+        put beside its request is not one (PV-20 §7.5)."""
+        paths = ExecPaths(execution_id)
+        box = paths.req
+        try:
+            names = os.listdir(box)
+        except FileNotFoundError:
+            _ANSWERED.pop(execution_id, None)
+            return []
+        out, seen, kept = [], _ANSWERED.get(execution_id, {}), {}
+        settled = time.time_ns() - 2 * 10**9
+        for n in names:
+            head, _, tail = n.partition('.')
+            # a name is the sequence number as respond() writes it: the execution picks
+            # these names, and '²' or '007' must not be read as, or answered as, another one
+            if tail != 'req.json' or not (head.isascii() and head.isdigit()
+                                          and head == str(int(head))):
+                continue
+            req_path = os.path.join(box, n)
+            res_path = os.path.join(paths.res, '%s.res.json' % head)
+            # Core never deletes an answer, so every tick would re-read every pair it ever
+            # answered: a pair whose two files are as they were when it was seen answered
+            # is skipped on a stat. The stat comes before the read, so a file rewritten
+            # between them is read again on the next tick; and a pair is remembered only
+            # once its files are older than the clock's resolution, as git does for the
+            # index, so a rewrite within one tick of the stamp cannot keep the old one.
+            stamp = (_stamp(req_path), _stamp(res_path))
+            if None not in stamp and seen.get(head) == stamp:
+                kept[head] = stamp
+                continue
+            body = _read_object(req_path)
+            # a number is reused once the execution empties req/, so an answer counts
+            # only when it echoes this request's nonce
+            res = _read_object(res_path)
+            if res is not None and _same(res.get('nonce'), (body or {}).get('nonce')):
+                if all(x is not None and x[0] < settled for x in stamp):
+                    kept[head] = stamp
+                continue
+            out.append((int(head), body))
+        while len(kept) > _ANSWERED_PAIRS_MAX:      # the execution picks how many it writes
+            del kept[next(iter(kept))]
+        _ANSWERED[execution_id] = kept
+        while len(_ANSWERED) > _ANSWERED_MAX:       # an eviction costs one re-read, never a wrong answer
+            del _ANSWERED[next(iter(_ANSWERED))]
+        return sorted(out, key=lambda x: x[0])
+
+    @staticmethod
+    def respond(execution_id, seq, request, decision, reason=''):
+        """Answer *request*, the very dict `pending_requests` returned and Core judged
+        (None when it was unreadable). The answer echoes that request's nonce and digest,
+        never a second read of the file the execution can rewrite: a hook accepts an
+        answer only for the content it wrote."""
+        paths = ExecPaths(execution_id)
+        os.makedirs(paths.res, exist_ok=True)
+        config.write_json_atomic(
+            os.path.join(paths.res, '%d.res.json' % seq),
+            {'decision': decision, 'reason': reason,
+             'nonce': None if request is None else request.get('nonce'),
+             'digest': None if request is None else hook.request_digest(request)},
+            indent=None)
+
+    # ── git reads the boundary checks need (outside any transaction) ──
+
+    @staticmethod
+    def git_branch(workdir):
+        """HEAD's branch in *workdir*, or None (not a repository, detached)."""
+        if not workdir:
+            return None
+        name = (proc.git(['rev-parse', '--abbrev-ref', 'HEAD'], workdir) or '').strip()
+        return name if name and name != 'HEAD' else None
+
+    @staticmethod
+    def git_remotes(workdir):
+        """{remote name: host} of *workdir*."""
+        if not workdir:
+            return {}
+        from ..core.execution.canonical import host_of
+        out = {}
+        for line in (proc.git(['remote', '-v'], workdir) or '').splitlines():
+            parts = line.split()
+            if len(parts) >= 2:
+                url = parts[1]
+                host = host_of(url) if '://' in url else url.split('@')[-1].split(':')[0]
+                out.setdefault(parts[0], host or None)
+        return out
+
+    # ── a user's terminal (p12-design-gate §14.4) ──
+
+    @staticmethod
+    def open_terminal(argv, *, cwd, env, title=''):
+        """Open a user's session in a new terminal window: (process | None,
+        error). Launched, never supervised — the user drives it (§14.3)."""
+        return proc.spawn_terminal(argv, cwd=cwd, env=env, title=title)
+
+    @staticmethod
+    def diff_stat(workdir):
+        """`git diff --stat HEAD` lines of *workdir*, for a checkpoint; [] when it is
+        not a repository (p12-design-gate §8.2)."""
+        if not workdir or not os.path.isdir(workdir):
+            return []
+        out = proc.git(['diff', '--stat', 'HEAD'], workdir) or ''
+        return [line.strip() for line in out.splitlines() if line.strip()][:30]
+
+    @staticmethod
+    def end_state(workdir):
+        """The digest of *workdir*'s state at an execution's end (ADR-0047 §5):
+        HEAD, the tracked diff against it and every untracked file's content
+        hash. None when it cannot be measured (not a repository, no commit, a
+        failed read) — the guard reads that as no progress.
+
+        Read-only: `--no-optional-locks` keeps git from refreshing the index,
+        and `hash-object` without `-w` stores nothing (ADR-0046, MG-6)."""
+        if not workdir or not os.path.isdir(workdir):
+            return None
+
+        def git(*args, stdin=None):
+            r = proc.run(['git', '--no-optional-locks', *args], cwd=workdir, stdin=stdin)
+            return None if r is None or r.returncode else r.stdout
+        head = git('rev-parse', '--verify', 'HEAD')
+        diff = git('diff', '--binary', 'HEAD')
+        others = git('ls-files', '--others', '--exclude-standard', '-z')
+        if head is None or diff is None or others is None:
+            return None
+        paths = sorted(p for p in others.split('\0') if p)
+        hashes = git('hash-object', '--stdin-paths', stdin='\n'.join(paths) + '\n') \
+            if paths else ''
+        if hashes is None:
+            return None
+        h = hashlib.sha256()
+        for part in (head.strip(), diff, '\0'.join(paths), hashes):
+            h.update(part.encode('utf-8', 'surrogateescape'))
+            h.update(b'\0')
+        return h.hexdigest()
+
+    # ── worktrees (§17) ──
+
+    @staticmethod
+    def add_worktree(root, path, branch, base='HEAD'):
+        """`git worktree add -b <branch> <path> <base>` in *root* (P13 D12: a
+        task forks from the mission branch once it exists). Returns the path,
+        or raises OSError with git's reason."""
+        if os.path.isdir(path):
+            return path             # this execution's own, made before a restart
+        check_worktree_path(path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        flag = '-b'
+        if LocalNode.branch_exists(root, branch):
+            # left by an add that failed after creating it, or kept after its
+            # merge (P13 §12.1) while plan versions reuse task keys: moved to
+            # *base* only when that loses nothing, else `-b` fails on it forever
+            if not LocalNode.git_is_ancestor(root, branch, base):
+                raise OSError('branch %s holds commits %s does not; it is left as it is'
+                              % (branch, base))
+            flag = '-B'
+        r = _project_git(root, [*_WORKTREE, 'add', flag, branch, '--', path, base])
+        if r is None or r.returncode != 0:
+            raise OSError('git worktree add failed: %s' % ((r.stderr or r.stdout or '').strip()
+                                                          if r is not None else 'no git'))
+        return path
+
+    @staticmethod
+    def remove_worktree(root, path):
+        """Remove a worktree this node created, only when git lists it."""
+        listed = any(os.path.normcase(os.path.abspath(line[len('worktree '):])) ==
+                     os.path.normcase(os.path.abspath(path))
+                     for line in (_project_git_text(root, ['worktree', 'list', '--porcelain'])
+                                  or '').splitlines() if line.startswith('worktree '))
+        if listed:
+            _project_git_text(root, [*_WORKTREE, 'remove', '--force', '--', path], timeout=60)
+        return listed
+
+    @staticmethod
+    def base_checkout(root, path, rev):
+        """A detached worktree of *rev* at *path* for a base-revision run (T-1068),
+        replacing one a crash left there, written by a Git that runs none of the
+        repository's code. Returns the path or raises OSError."""
+        LocalNode.drop_checkout(root, path)
+        check_worktree_path(path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # -f: a registered worktree whose directory is gone is replaced too
+        r = _project_git(root, ['worktree', 'add', '-f', '--detach', '--', path, rev])
+        if r is None or r.returncode != 0:
+            raise OSError('git worktree add failed: %s' % (
+                (r.stderr or r.stdout).strip() if r
+                else 'no git %s or newer ran' % '.'.join(map(str, STORE_GIT_FLOOR))))
+        return path
+
+    @staticmethod
+    def drop_checkout(root, path):
+        """True when no worktree is left at *path*, on disk or in the repository's
+        list. `-f -f` also removes one a killed add left locked (`initializing`)."""
+        _project_git(root, ['worktree', 'remove', '-f', '-f', '--', path])
+        if os.path.exists(path):
+            return False
+        r = _project_git(root, ['worktree', 'list', '--porcelain'])
+        if r is None or r.returncode:
+            return False
+        at = os.path.normcase(os.path.realpath(path))
+        return not any(os.path.normcase(os.path.realpath(line[len('worktree '):])) == at
+                       for line in r.stdout.splitlines() if line.startswith('worktree '))
+
+    # ── verification and merge-back (P13, p13-design-gate §8, §12) ──
+
+    @staticmethod
+    def git_head(workdir):
+        """The commit HEAD names in *workdir*, or None (not a repository)."""
+        if not workdir or not os.path.isdir(workdir):
+            return None
+        out = (_project_git_text(workdir, ['rev-parse', '--verify', '-q', 'HEAD']) or '').strip()
+        return out or None
+
+    @staticmethod
+    def git_resolve(root, rev):
+        out = (_project_git_text(root, ['rev-parse', '--verify', '-q', rev + '^{commit}']) or '').strip()
+        return out or None
+
+    @staticmethod
+    def git_dirty(workdir, *, tracked_only=False):
+        """Uncommitted changes in *workdir* (untracked files too, unless
+        *tracked_only*); None when git cannot tell."""
+        args = ['status', '--porcelain=v1'] + (['--untracked-files=no'] if tracked_only else [])
+        out = _project_git_text(workdir, args)
+        return None if out is None else bool(out.strip())
+
+    @staticmethod
+    def git_snapshot(workdir, message):
+        """Commit everything *workdir* holds uncommitted, as Archeus (§12.2).
+        Returns the new HEAD (unchanged when nothing was staged), or raises OSError."""
+        ident = ['-c', 'user.name=' + CORE_GIT_NAME, '-c', 'user.email=' + CORE_GIT_EMAIL,
+                 '-c', 'commit.gpgsign=false']
+
+        def run(what, args):
+            r = _project_git(workdir, args)
+            if r is None or r.returncode != 0:
+                raise OSError('git %s failed: %s' % (what, (r.stderr or r.stdout or '').strip()
+                                                     if r is not None else 'no git'))
+
+        run('add', ['add', '-A'])
+        # `status` can call a file modified that `add` then stages nothing for: a
+        # rewrite with the same content changes its size under core.autocrlf
+        staged = _project_git(workdir, ['diff', '--cached', '--quiet'])
+        if staged is None or staged.returncode != 0:
+            run('commit', ident + ['commit', '-q', '--no-verify', '-m', message])
+        head = LocalNode.git_head(workdir)
+        if head is None:
+            raise OSError('git snapshot could not read HEAD')
+        return head
+
+    @staticmethod
+    def git_merge_base(root, a, b):
+        out = (_project_git_text(root, ['merge-base', a, b]) or '').strip()
+        return out or None
+
+    @staticmethod
+    def git_is_ancestor(root, a, b):
+        r = _project_git(root, ['merge-base', '--is-ancestor', a, b], timeout=15)
+        return r is not None and r.returncode == 0
+
+    @staticmethod
+    def git_numstat(root, base, rev):
+        """[(added, deleted, path)] of base..rev; None when git cannot tell."""
+        out = _project_git_text(root, ['diff', '--numstat', base, rev, '--'], timeout=60)
+        if out is None:
+            return None
+        rows = []
+        for line in out.splitlines():
+            parts = line.split('\t', 2)
+            if len(parts) == 3:
+                rows.append((parts[0], parts[1], parts[2]))
+        return rows
+
+    @staticmethod
+    def git_file(root, rev, path):
+        """The text of *path* as committed at *rev*, read from the object store
+        (no checkout, no worktree, no filter); None when it is not there."""
+        return _project_git_text(root, ['cat-file', 'blob', '%s:%s' % (rev, path)])
+
+    @staticmethod
+    def git_diff(root, base, rev, max_bytes=None):
+        """The unified diff of base..rev, no context lines and no configured diff
+        program (nothing is spawned but git), every file as text, its paths
+        unquoted, prefixed `a/` and `b/` and never paired as renames whatever the
+        repository configures; None when git cannot tell. With *max_bytes* at most
+        that many bytes are read and the text is a CutText whose `cut` says whether
+        the diff was longer. A cut is not a failure: git was stopped on purpose."""
+        r = _project_git(root, ['-c', 'core.quotePath=false', 'diff', '-U0', '--no-color',
+                                '--text', '--no-ext-diff', '--no-textconv', '--no-renames',
+                                '--src-prefix=a/', '--dst-prefix=b/', base, rev, '--'],
+                         max_bytes=max_bytes)
+        if r is None or (r.returncode and not getattr(r, 'cut', False)):
+            return None
+        if max_bytes is None:
+            return r.stdout
+        text = CutText(r.stdout)
+        text.cut = r.cut
+        return text
+
+    @staticmethod
+    def branch_exists(root, branch):
+        return LocalNode.git_resolve(root, 'refs/heads/' + branch) is not None
+
+    @staticmethod
+    def mission_worktree(root, path, branch, base):
+        """The mission branch's Core-owned worktree: *branch* at *path*, created
+        from *base* the first time (§12.1). Returns the path or raises OSError."""
+        if os.path.isdir(path):
+            return path
+        check_worktree_path(path)
+        if LocalNode.branch_exists(root, branch):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            r = _project_git(root, [*_WORKTREE, 'add', '--', path, branch])
+            if r is None or r.returncode != 0:
+                raise OSError('git worktree add failed: %s'
+                              % ((r.stderr or r.stdout or '').strip() if r else 'no git'))
+            return path
+        return LocalNode.add_worktree(root, path, branch, base=base)
+
+    @staticmethod
+    def git_merge(workdir, rev, message):
+        """Merge commit *rev* into the branch checked out in *workdir* as Archeus
+        (§12.4): ('merged', head) or ('conflict', paths); a conflict is aborted
+        and the branch left as it was. Raises OSError when git cannot run."""
+        ident = ['-c', 'user.name=' + CORE_GIT_NAME, '-c', 'user.email=' + CORE_GIT_EMAIL,
+                 '-c', 'commit.gpgsign=false']
+        # Explicit on the command line: git applies branch.<name>.mergeOptions after the -c
+        # configuration, so a repository's --gpg-sign or --verify-signatures would win over
+        # the pinned config alone.
+        r = _project_git(workdir, ident + ['merge', '--no-ff', '--no-edit', '--no-gpg-sign',
+                                           '--no-verify-signatures', '-m', message, rev],
+                         timeout=120)
+        if r is None:
+            raise OSError('git merge could not run')
+        if r.returncode == 0:
+            return 'merged', LocalNode.git_head(workdir)
+        paths = (_project_git_text(workdir, ['diff', '--name-only', '--diff-filter=U']) or '').splitlines()
+        _project_git(workdir, ['merge', '--abort'])
+        if not paths:
+            raise OSError('git merge failed: %s' % (r.stderr or r.stdout or '').strip())
+        return 'conflict', paths
+
+    @staticmethod
+    def run_check(workdir, argv, *, timeout, out_path, keep=CHECK_OUTPUT_KEEP):
+        """Run one verification command in *workdir* (§8.3), its output streamed
+        to *out_path*. Returns {exit_code, duration_ms, error, output (the last
+        *keep* bytes), output_bytes, truncated}. `error` is set when it could not
+        run or did not finish (a verifier fault, never the work's)."""
+        import subprocess
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        # the project's own commands, not Core's: nothing of a pytest that may be
+        # running Core (a test) leaks into them, and no ARCHEUS_* name - HOME
+        # locates run/ (core.json, local-token), the hook names carry execution
+        # credentials. K-O2 interim, not R4b: the user's identity still reads
+        # run/ at its default location.
+        env = {k: v for k, v in os.environ.items()
+               if not k.startswith(('PYTEST_', 'ARCHEUS_'))}
+        env.update(PYTHONDONTWRITEBYTECODE='1', GIT_TERMINAL_PROMPT='0')
+        t0 = time.monotonic()
+        with open(out_path, 'wb') as out:
+            try:
+                child = subprocess.Popen(argv, cwd=workdir, env=env, stdout=out,
+                                         stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                         creationflags=proc.no_window_flags,
+                                         start_new_session=os.name != 'nt')
+            except OSError as e:
+                return {'exit_code': None, 'duration_ms': 0, 'error': 'could not run: %s' % e,
+                        'output': b'', 'output_bytes': 0, 'truncated': False}
+            error = None
+            try:
+                child.wait(timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill_tree(child)
+                try:
+                    child.wait(30)
+                except subprocess.TimeoutExpired:
+                    pass            # unkillable: reported as the timeout, not a Core crash
+                error = 'timed out after %ds' % timeout
+        size = os.path.getsize(out_path)
+        with open(out_path, 'rb') as f:
+            f.seek(max(0, size - keep))
+            tail = f.read()
+        return {'exit_code': None if error else child.returncode,
+                'duration_ms': int((time.monotonic() - t0) * 1000), 'error': error,
+                'output': tail, 'output_bytes': size, 'truncated': size > keep}
+
+    def run_confined_check(self, verification_id, attempt, argv, *, toolchain, timeout,
+                           record, project_id, revision, workdirs, keep=CHECK_OUTPUT_KEEP):
+        """`run_check` confined (A6-3, T-054): the command runs as this attempt's own
+        principal inside a Core-held Job, in a checkout holding exactly the tree of
+        *revision* from *project_id*'s store (no `.git`) under
+        `run/verify/<vid>/<n>/own/`, with an environment built from nothing and empty
+        stdin. The result is `run_check`'s plus `confinement`; *record* writes the
+        verdict before the profile goes (`Isolation.run_confined`). A tree Core
+        cannot export is a preparation failure: nothing is launched."""
+        p = VerifyPaths(verification_id, attempt)
+        scratch = os.path.dirname(p.checkout)
+        stdin = os.path.join(p.dir, 'stdin')
+
+        def prepare():
+            # after admission, and fresh-only: an attempt's files are never reused,
+            # truncated or written over, whatever is already there
+            os.makedirs(os.path.dirname(p.dir), exist_ok=True)
+            os.mkdir(p.dir)
+            os.mkdir(scratch)
+            for d in (p.checkout, p.home, p.tmp, p.config):
+                os.mkdir(d)
+            for f in (stdin, p.out):
+                open(f, 'xb').close()
+            _export_tree(project_id, revision, p.checkout, workdirs,
+                         _Deadline('the export for %s' % verification_id))
+            staging.scan_grants((scratch,) + tuple(toolchain))
+            return base._verifier_env(toolchain, scratch)
+        grant = isolation_mod.Grant
+        request = isolation_mod.IsolationRequest(
+            execution_id=isolation_mod.Principal('verify', verification_id, attempt).key,
+            workspace=p.checkout,
+            grants=(grant(p.checkout, 'rw', 'checkout'), grant(scratch, 'rw', 'scratch'))
+            + tuple(grant(d, 'rx', 'toolchain') for d in toolchain),
+            core_state=run_dir())
+        return self.isolation.run_confined(
+            request, argv, env=None, timeout=timeout,
+            out_path=p.out, stdin_path=stdin, record=record, keep=keep, prepare=prepare)
+
+    # ── PV-20 K1: the Core-owned store (keep-all: nothing here deletes) ──
+
+    #: no production caller may fetch until the source side of a local fetch is
+    #: accepted on evidence (T-046 C1); only a test sets this, on purpose, by name
+    store_fetch_accepted = False
+
+    @staticmethod
+    def store_git(mode, args, *, workdirs, git_dir=None, stdin=None, timeout=120, sink=None):
+        """The one spawner of a pinned Git call; stdout, or StoreError. *workdirs*
+        are the execution workdirs Core recorded (its database; the node has none).
+        With a *sink* (K2, C-1013-T049 §1) stdout is never decoded or held: it goes
+        to `sink.feed` in fixed chunks as it arrives, *stdin* is bytes, and a sink
+        that refuses, or *timeout*, kills the child."""
+        if not args or args[0] not in _STORE_ARGS[mode]:
+            raise StoreError('git %s is not a %s call' % (args[:1], mode))
+        argv, env, cwd = _store_pin(mode, git_dir)
+        _outside_executions([cwd] + ([git_dir] if git_dir else []), workdirs)
+        if sink is not None:
+            return _stream(argv + list(args), cwd, env, stdin, sink, timeout)
+        r = proc.run(argv + list(args), cwd=cwd, env=env, timeout=timeout, stdin=stdin)
+        if r is None or r.returncode:
+            said = (r.stderr or r.stdout).strip() if r is not None else 'could not run'
+            if (r is not None and r.returncode == 1 and not said and '-q' in args
+                    and args[0] == 'rev-parse'):
+                raise NoSuchRevision('git rev-parse failed: no such revision')
+            raise StoreError('git %s failed: %s' % (args[0], said))
+        return r.stdout
+
+    @staticmethod
+    def store_open(project_id, *, workdirs):
+        """The project's store, created and sealed the first time and checked
+        against its pin record every time (T-046 C1 steps 1-6). Returns its path."""
+        store = repo_store(project_id)
+        if STORE_MAX is not None and len(store) > STORE_MAX:
+            raise StoreError('the store %s is %d characters long; Git for Windows writes nothing '
+                             'past MAX_PATH below it once it passes %d. Set ARCHEUS_HOME to a '
+                             'shorter folder' % (store, len(store), STORE_MAX))
+        _outside_executions([store], workdirs)
+        pin = _pin_files(workdirs)
+        version = _git_version(workdirs)
+        owned = os.path.join(pin, project_id + '.owned')
+        record = os.path.join(pin, project_id + '.json')
+        if not _present(store):
+            try:
+                open(owned, 'xb').close()       # Core claims the store before it exists
+            except FileExistsError:
+                pass                            # a claim a crash left before its init
+            LocalNode.store_git('init', ['init', '--bare', '-q', '--object-format=sha1',
+                                         '--template=' + os.path.join(pin, 'empty'), store],
+                                workdirs=workdirs)
+        elif not _present(owned):
+            raise StoreError('a store Core never claimed: %s' % store)
+        _layout(store, owned)
+        cfg = os.path.join(store, 'config')
+        if not _present(record):
+            if _present(os.path.join(store, 'packed-refs')) or any(
+                    files for _d, _s, files in os.walk(os.path.join(store, 'refs'))):
+                raise StoreError('an unsealed store holds refs: %s' % store)
+            with open(cfg, 'rb') as f:
+                if not _INIT_CONFIG.fullmatch(f.read().decode('utf-8', 'replace')):
+                    raise StoreError('an unsealed store has config Core did not write: %s'
+                                     % store)
+            LocalNode.store_git('seal', ['symbolic-ref', 'HEAD', 'refs/archeus/none'],
+                                workdirs=workdirs, git_dir=store)
+            tree = LocalNode.store_git('seal', ['mktree'], workdirs=workdirs, git_dir=store,
+                                       stdin='').strip()
+            if tree != EMPTY_TREE:
+                raise StoreError('the empty tree is %s, not %s' % (tree, EMPTY_TREE))
+            if not config.write_json_atomic(record, _pin_record(store, version)):
+                raise StoreError('could not record the pin of %s' % store)
+        _plain(record, False)
+        with open(record, encoding='utf-8') as f:
+            if json.load(f) != _pin_record(store, version):
+                raise StoreError('the store or its Git is not the one Core sealed: %s' % store)
+        with open(os.path.join(store, 'HEAD'), 'rb') as f:
+            head = f.read().decode('utf-8', 'replace')
+        if head != STORE_HEAD or not os.path.isfile(
+                os.path.join(store, 'objects', EMPTY_TREE[:2], EMPTY_TREE[2:])):
+            raise StoreError('the store is not as Core sealed it: %s' % store)
+        return store
+
+    @staticmethod
+    def store_read(project_id, args, *, workdirs):
+        """Plumbing in a trusted store; a diff never runs an external driver or textconv."""
+        args = list(args)
+        if not args or args[0] not in STORE_READS:
+            raise StoreError('git %s is not a store read' % args[:1])
+        store = LocalNode.store_open(project_id, workdirs=workdirs)
+        if args[0] == 'diff':
+            args[1:1] = ['--no-ext-diff', '--no-textconv']
+        return LocalNode.store_git('trusted', args, workdirs=workdirs, git_dir=store)
+
+    @staticmethod
+    def store_fetch(project_id, root, rev_name, expect, ref, *, workdirs, switches=None):
+        """*rev_name* of the repository at *root* into the store as *ref*, only if
+        it still names *expect*, the commit Core resolved (T-046 §4.2); the
+        incoming ref is kept. Unavailable until `store_fetch_accepted`."""
+        if (switches.store_fetch if switches is not None
+                else LocalNode.store_fetch_accepted) is not True:
+            raise StoreError('no fetch into a store until its source side is accepted '
+                             '(T-046 C1)')
+        if not ((_REF.fullmatch(rev_name) or rev_name == 'HEAD') and _REF.fullmatch(ref)
+                and ref.startswith('refs/archeus/')
+                and '..' not in rev_name + ref and re.fullmatch(r'[0-9a-f]{40}', expect)
+                and _abs(root)):
+            raise StoreError('not a fetch Core may make: %r' % ((root, rev_name, expect, ref),))
+        if len(ref) > REF_MAX:              # before the store is opened or anything written
+            raise StoreError('the ref %s is %d characters long; a store takes at most %d'
+                             % (ref, len(ref), REF_MAX))
+        _source(root, workdirs)
+        store = LocalNode.store_open(project_id, workdirs=workdirs)
+        incoming = 'refs/archeus/incoming/' + ref[len('refs/archeus/'):]
+        LocalNode.store_git('trusted', ['fetch', '--no-tags', '--no-recurse-submodules',
+                                        '--no-write-fetch-head', '--no-auto-gc', '--end-of-options',
+                                        root, '+%s:%s' % (rev_name, incoming)],
+                            workdirs=workdirs, git_dir=store)
+        got = LocalNode.store_git('trusted', ['rev-parse', '--verify', '-q', incoming + '^{commit}'],
+                                  workdirs=workdirs, git_dir=store).strip()
+        if got != expect:
+            raise StoreError('lost race: %s is now %s, not %s' % (rev_name, got, expect))
+        return _publish_once(ref, expect, store, workdirs)
+
+    @staticmethod
+    def store_resolve_base(root, rev, *, workdirs, peel='^{commit}'):
+        """The commit *rev* names in the project repository at *root*, read under
+        the pin: global and system config, hooks and replace refs are not read;
+        the repository's own local config still is. Reads only; no caller yet."""
+        # a ref name or a full id only: no reflog, upstream or path syntax, so
+        # nothing beyond refs and objects is read to resolve it
+        # HEAD too (K2, T-049 §2: a first attempt's base when the mission branch
+        # does not resolve), read through the HEAD file `_source` checks
+        if not ((_REF.fullmatch(rev) and '..' not in rev) or rev == 'HEAD'
+                or re.fullmatch(r'[0-9a-f]{40}', rev)):
+            raise StoreError('not a revision Core resolves: %r' % (rev,))
+        git_dir = _source(root, workdirs)
+        _pin_files(workdirs)
+        _git_version(workdirs)
+        return LocalNode.store_git('base', ['rev-parse', '--verify', '-q', '--end-of-options',
+                                            rev + peel], workdirs=workdirs,
+                                   git_dir=git_dir).strip()
+
+    # ── K2: the seed (T-049, C-1013-T049) ──
+
+    @staticmethod
+    def resolve_base(root, mission_branch, *, workdirs):
+        """A first attempt's base (T-049 §2): (the name a fetch takes, the commit):
+        the mission branch if it resolves, else HEAD, each read once under the pin.
+        Only the commit is ever recorded."""
+        rev = 'refs/heads/' + mission_branch
+        if not (_REF.fullmatch(rev) and '..' not in rev):
+            raise StoreError('not a mission branch: %r' % (mission_branch,))
+        try:
+            return rev, LocalNode.store_resolve_base(root, rev, workdirs=workdirs)
+        except NoSuchRevision:
+            try:        # a ref naming a missing object or a non-commit gives the same silent exit 1
+                LocalNode.store_resolve_base(root, rev, workdirs=workdirs, peel='')
+            except NoSuchRevision:
+                return 'HEAD', LocalNode.store_resolve_base(root, 'HEAD', workdirs=workdirs)
+            raise StoreError('the mission branch %s names no commit' % mission_branch)
+
+    @staticmethod
+    def store_seed_ref(project_id, execution_id, commit, *, workdirs):
+        """The execution's own seed ref pointed at *commit*, already in the store (a
+        retry's base, T-049 §3): written once, never moved; refused if it names
+        anything else."""
+        ref = seed_ref(execution_id)
+        if not re.fullmatch(r'[0-9a-f]{40}', commit):
+            raise StoreError('not a commit Core seeds from: %r' % (commit,))
+        return _publish_once(ref, commit, LocalNode.store_open(project_id, workdirs=workdirs),
+                             workdirs)
+
+    @staticmethod
+    def import_workspace(project_id, execution_id, seed_revision, *, workdirs):
+        """The execution's workspace as one commit on its *seed_revision* in the store
+        (K3, T-051 §3-§5 with C-1013-T051), once the fence has confirmed quiescence.
+        Core's own Python walks it, never Git, following nothing; one `fast-import`
+        writes `refs/archeus/exec/<id>/import`, which must not exist yet, from a stream
+        Core generates; the commit's parent and its whole tree are read back and must
+        be exactly what Core sent. Returns {revision, tree, files_changed, deleted,
+        dropped_dirs}; any refusal is StoreError, and the workspace and the store keep
+        whatever exists (keep-all)."""
+        deadline = _Deadline(execution_id)
+
+        def git(mode, args, **kw):
+            return LocalNode.store_git(mode, args, workdirs=workdirs, git_dir=store,
+                                       timeout=deadline.left(), **kw)
+        if not re.fullmatch(r'[0-9a-f]{40}', seed_revision):
+            raise StoreError('not a seed Core imports onto: %r' % (seed_revision,))
+        work, ref = ExecPaths(execution_id).work, _import_ref(execution_id)
+        store = LocalNode.store_open(project_id, workdirs=workdirs)
+        try:
+            git('trusted', ['rev-parse', '--verify', '-q', ref])
+        except StoreError:
+            pass                        # absent: the only state an import starts from
+        else:
+            raise StoreError('%s exists already: an import is written once' % ref)
+        seed = _Manifest(len(work))     # the seed map: the only authority for a mode
+        git('trusted', ['ls-tree', '-r', '-z', '-l', '--full-tree', seed_revision], sink=seed)
+        plan, counts = _import_plan(work, seed, deadline)
+        sent = {}
+        git('import', ['fast-import', '--done', '--quiet'], sink=_Silent(),
+            stdin=_import_stream(execution_id, seed_revision, plan, deadline, sent))
+        rev = git('trusted', ['rev-parse', '--verify', '-q', ref + '^{commit}']).strip()
+        head = git('trusted', ['cat-file', 'commit', rev]).split('\n\n', 1)[0].split('\n')
+        parents = [x[7:] for x in head if x.startswith('parent ')]
+        tree = [x[5:] for x in head if x.startswith('tree ')]
+        back = _Manifest(len(work))
+        git('trusted', ['ls-tree', '-r', '-z', '-l', '--full-tree', rev], sink=back)
+        if parents != [seed_revision] or len(tree) != 1 or \
+                {p: (m, o) for m, o, _s, p in back.entries} != sent:
+            raise StoreError('%s is not what Core sent: kept, never recorded' % ref)
+        was = {p: (m, o) for m, o, _s, p in seed.entries}
+        changed = sorted(['A ' + p for p in sent if p not in was]
+                         + ['M ' + p for p in sent if p in was and was[p] != sent[p]]
+                         + ['D ' + p for p in was if p not in sent])
+        return dict(counts, revision=rev, tree=tree[0], files_changed=changed[:500])
+
+    @staticmethod
+    def seed_workspace(project_id, execution_id, seed_revision, branch, *, workdirs):
+        """The execution's repository, holding exactly the tree of *seed_revision*,
+        its own seed ref in the store (T-049 §4 with C-1013-T049): built in Core's
+        staging directory, checked there, renamed into the execution's workspace,
+        which it returns. A refusal publishes nothing and keeps what exists; no Git
+        runs once the workspace exists."""
+        deadline = _Deadline(execution_id)
+
+        def git(mode, args, git_dir, **kw):
+            return LocalNode.store_git(mode, args, workdirs=workdirs, git_dir=git_dir,
+                                       timeout=min(120, deadline.left()), **kw)
+        head = 'refs/heads/' + branch
+        if not (re.fullmatch(r'[0-9a-f]{40}', seed_revision) and _SEED_BRANCH.fullmatch(branch)
+                and '..' not in branch and not branch.endswith(('.', '.lock'))):
+            raise StoreError('not a seed Core builds: %r' % ((seed_revision, branch),))
+        work, stage = ExecPaths(execution_id).work, seed_staging(execution_id)
+        for p in (work, stage):     # fresh, never reused or adopted (rule c)
+            if _present(p):
+                raise StoreError('a seed target that already exists: %s' % p)
+        store = LocalNode.store_open(project_id, workdirs=workdirs)
+        ref = seed_ref(execution_id)
+        if git('trusted', ['rev-parse', '--verify', '-q', ref + '^{commit}'],
+               store).strip() != seed_revision:
+            raise StoreError('%s does not name %s' % (ref, seed_revision))
+        # the manifest, every bound checked as it arrives and before a byte is written
+        tree = _Manifest(max(len(work), len(stage)))
+        git('trusted', ['ls-tree', '-r', '-z', '-l', '--full-tree', seed_revision], store,
+            sink=tree)
+        # the skeleton: Core's config, the seed commit shallow, the index from its tree
+        _made(repos_dir(), os.path.dirname(stage), deadline)
+        os.mkdir(stage)
+        git('init', ['init', '-q', '--object-format=sha1', '--template=' + _pin_area()[2],
+                     stage], None)
+        dot = os.path.join(stage, '.git')
+        _plain(dot, True)
+        _plain(os.path.join(dot, 'config'), False)
+        with open(os.path.join(dot, 'config'), 'wb') as f:
+            f.write(SEED_CONFIG)
+        git('seed', ['fetch', '--depth=1', '--no-tags', '--no-recurse-submodules',
+                     '--no-write-fetch-head', '--no-auto-gc', '--end-of-options', store, ref],
+            dot)
+        git('seed', ['update-ref', head, seed_revision, ''], dot)
+        git('seed', ['symbolic-ref', 'HEAD', head], dot)
+        git('seed', ['read-tree', seed_revision], dot)
+        # the files, written by Core as data: a link is its target text, a gitlink an
+        # empty directory (owner Q1, A); every blob checked against its id
+        _write_tree(tree, stage, deadline,
+                    lambda **kw: git('trusted', ['cat-file', '--batch'], store, **kw))
+        # two domains, both before the rename: the working tree, exactly the tree's
+        # map; and the .git Core made, exactly what it wrote
+        if _seed_walk(stage, deadline) != tree.expected():
+            raise StoreError('the seed of %s differs from its tree' % execution_id)
+        _seed_meta(dot, head, seed_revision, deadline)
+        index = _Index()
+        git('seed', ['ls-files', '-s', '-z'], dot, sink=index)
+        if index.found != {(m, o, p) for m, o, _s, p in tree.entries} or git(
+                'seed', ['rev-parse', 'HEAD^{tree}'], dot) != git(
+                'trusted', ['rev-parse', seed_revision + '^{tree}'], store):
+            raise StoreError('the seed index of %s is not its tree' % execution_id)
+        _made(archeus_home(), os.path.dirname(work), deadline)
+        if _present(work):
+            raise StoreError('a seed target that already exists: %s' % work)
+        deadline.left()                 # immediately before publication
+        os.rename(stage, work)
+        return work
+
+
+#: execution id -> {sequence: (request stamp, answer stamp)} of the pairs `pending_requests`
+#: last found answered; rebuilt on every call, dropped when the execution's process ends,
+#: and at most _ANSWERED_MAX executions long, each at most _ANSWERED_PAIRS_MAX pairs
+_ANSWERED = {}
+_ANSWERED_MAX = 256
+_ANSWERED_PAIRS_MAX = 1024
+
+
+def _stamp(path):
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return st.st_mtime_ns, st.st_size, st.st_ino
+
+
+def _same(a, b):
+    # NaN is not equal to itself, nor is a list or dict holding one: an execution that
+    # wrote `"nonce": NaN` kept its request pending, and judged, on every tick
+    return json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
+
+
+def _read_object(path):
+    """The JSON object at *path*, or None. The file is execution-writable and Core
+    re-reads it every tick: more than MAX_REQUEST_BYTES is refused before it is parsed,
+    and the read is never asked for more than the file holds."""
+    try:
+        size = os.stat(path).st_size
+        with open(path, 'rb') as f:
+            data = f.read(min(size, MAX_REQUEST_BYTES) + 1)
+        body = json.loads(data.decode('utf-8')) if len(data) <= MAX_REQUEST_BYTES else None
+    except (OSError, ValueError, RecursionError):   # a deep `[[[...` is a file, not a crash
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def _publish_once(ref, commit, store, workdirs):
+    """*ref* created at *commit*, never moved (T-049 §3): a ref that already names
+    *commit* is the same publication; one naming anything else is refused."""
+    try:
+        LocalNode.store_git('trusted', ['update-ref', ref, commit, ''], workdirs=workdirs,
+                            git_dir=store)
+    except StoreError:
+        pass                            # it exists: what it names decides below
+    got = LocalNode.store_git('trusted', ['rev-parse', '--verify', '-q', ref + '^{commit}'],
+                              workdirs=workdirs, git_dir=store).strip()
+    if got != commit:
+        raise StoreError('%s names %s, not %s' % (ref, got, commit))
+    return commit
+
+
+def _write_tree(tree, top, deadline, batch):
+    """*tree*'s directories and files under the empty *top*, written by Core as data
+    (a link is its target text, a gitlink an empty directory, owner Q1 A); every
+    blob is checked against its id as it streams in through *batch* (`cat-file`)."""
+    for d in sorted(tree.dirs, key=lambda d: d.count('/')):
+        deadline.left()
+        os.mkdir(os.path.join(top, *d.split('/')))
+    blobs = [(oid, size, os.path.join(top, *path.split('/')))
+             for mode, oid, size, path in tree.entries if mode != '160000']
+    if blobs:
+        batch(sink=_Blobs(blobs),
+              stdin=b''.join(oid.encode('ascii') + b'\n' for oid, _s, _p in blobs))
+
+
+def _export_tree(project_id, revision, top, workdirs, deadline):
+    """The tree of commit *revision* from *project_id*'s store into the empty *top*,
+    with no `.git` (A6-4, T-054 §4): the seed's manifest, writer and walk, so the
+    same bounds hold and the result is exactly the tree's map."""
+    if not re.fullmatch(r'[0-9a-f]{40}', revision or ''):
+        raise StoreError('not a revision Core exports: %r' % (revision,))
+
+    def git(args, **kw):
+        return LocalNode.store_git('trusted', args, workdirs=workdirs, git_dir=store,
+                                   timeout=min(120, deadline.left()), **kw)
+    if not _present(repo_store(project_id)):
+        raise StoreError('no store holds %s for %s' % (revision, project_id))
+    store = LocalNode.store_open(project_id, workdirs=workdirs)
+    if git(['rev-parse', '--verify', '-q', revision + '^{commit}']).strip() != revision:
+        raise StoreError('%s is not a commit in the store' % revision)
+    tree = _Manifest(len(top))
+    git(['ls-tree', '-r', '-z', '-l', '--full-tree', revision], sink=tree)
+    _write_tree(tree, top, deadline, lambda **kw: git(['cat-file', '--batch'], **kw))
+    if _seed_walk(top, deadline) != tree.expected():
+        raise StoreError('the export of %s differs from its tree' % revision)
+
+
+def _abs(path):
+    # ntpath.isabs('\\x') is True on 3.10 and False on 3.13: a rooted path with no drive is refused on every version
+    return os.path.isabs(path) and (os.name != 'nt' or bool(os.path.splitdrive(path)[0]))
+
+
+@functools.lru_cache(maxsize=None)
+def _git_exe():
+    # resolved once per process; on Windows `which` also searches the current
+    # directory first, which yields a relative path: refused, never run
+    exe = shutil.which('git')
+    if not exe or not _abs(exe):
+        raise StoreError('no absolute git on PATH: %r' % (exe,))
+    return exe
+
+
+def _project_git_text(root, args, timeout=60):
+    """The stdout of `_project_git` as text, or None when git fails or cannot run."""
+    r = _project_git(root, args, timeout=timeout)
+    return None if r is None or r.returncode else r.stdout
+
+
+def _project_git(root, args, timeout=60, max_bytes=None):
+    """A Git call in a project's own repository that runs none of its code: no
+    hook, fsmonitor, filter or merge driver selected by an attribute, replace ref
+    or lazy fetch, and no configuration but the repository's own. A repository
+    whose info/attributes sets attributes is refused (None), and so is one whose
+    attribute lookup fails. The default merge driver is pinned to text, and no
+    signing program runs: the signing and verification pins are set on the command
+    line, so a repository option cannot turn them back on. The CompletedProcess has
+    its text decoded as written (no newline translation), or None. None includes a Git that lies inside *root*
+    (the rule of `proc.run` for a bare program) and a Git below the floor, which
+    ignores some of these pins: it is asked its version and nothing else. With
+    *max_bytes* stdout is read only up to that many bytes (`proc.run_capped`) and
+    the result's `cut` says whether there was more."""
+    exe = proc.which('git', avoid=[root])
+    if exe is None:
+        return None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as empty:
+        none = os.path.join(empty, 'none')
+        env = {k: os.environ[k] for k in ('SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP') if k in os.environ}
+        env.update(PATH=os.path.dirname(exe), HOME=empty, XDG_CONFIG_HOME=empty,
+                   GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=none, GIT_ATTR_NOSYSTEM='1',
+                   GIT_ATTR_SOURCE=EMPTY_TREE, GIT_TERMINAL_PROMPT='0',
+                   GIT_ALLOW_PROTOCOL='file', GIT_PROTOCOL_FROM_USER='0', GIT_NO_LAZY_FETCH='1')
+        argv = [exe, '--no-replace-objects']
+        for c in ('core.hooksPath=' + empty, 'core.fsmonitor=false', 'core.attributesFile=' + none,
+                  'merge.default=text', 'merge.verifySignatures=false', 'commit.gpgsign=false',
+                  'tag.gpgSign=false', 'submodule.recurse=false', 'gc.auto=0', 'maintenance.auto=false',
+                  'core.longpaths=true'):
+            argv += ['-c', c]
+        def run(argv, cwd, cap=None):
+            if cap is not None:
+                return proc.run_capped(argv, cwd=cwd, env=env, timeout=timeout, max_bytes=cap)
+            return subprocess.run(argv, cwd=cwd, env=env, capture_output=True, timeout=timeout,
+                                  stdin=subprocess.DEVNULL, creationflags=proc.no_window_flags)
+        try:
+            if exe not in _VERSION:
+                out = run([exe, 'version'], empty).stdout.decode('utf-8', 'replace').strip()
+                if not _at_floor(out):
+                    return None
+                _VERSION[exe] = out
+            # Git reads the repository's info/attributes whatever attribute source is pinned.
+            # A failed lookup is refused: it is not evidence that the file is absent.
+            # The configuration stays frozen from here until the Git call has exited
+            with _frozen_config(root, argv, env, run, empty) as argv:
+                where = run(argv + ['rev-parse', '--git-path', 'info/attributes'], root)
+                if where.returncode != 0 or not where.stdout.strip():
+                    return None
+                attrs = os.path.join(root, where.stdout.decode('utf-8', 'replace').strip())
+                if os.path.isfile(attrs):
+                    with open(attrs, 'rb') as f:
+                        if any(line.strip() and not line.lstrip().startswith(b'#') for line in f):
+                            return None
+                # Another writer can create that file after this check, so the command is pinned
+                # as well: a filter, merge or diff driver runs only if the repository configuration
+                # defines it, and each such driver is emptied on the command line.
+                drivers = run(argv + ['config', '--name-only', '--get-regexp', _DRIVER_KEYS], root)
+                if drivers.returncode not in (0, 1):
+                    return None
+                pins = []
+                for name in drivers.stdout.decode('utf-8', 'replace').splitlines():
+                    pins += ['-c', name.strip() + '=']
+                r = run(argv + pins + list(args), root, max_bytes)
+        except Exception:
+            return None
+    r.stdout, r.stderr = (b.decode('utf-8', 'replace') for b in (r.stdout, r.stderr))
+    return r
+
+
+_GENERIC_READ, _FILE_SHARE_READ, _OPEN_EXISTING, _FILE_ATTRIBUTE_NORMAL = 0x80000000, 1, 3, 0x80
+#: keys whose files Git would read in addition to the repository's own configuration
+_INCLUDE_KEYS = r'^include(if\..+)?\.path$'
+
+
+def _reparse_free(path):
+    while True:
+        st = os.lstat(path)
+        if stat.S_ISLNK(st.st_mode) or getattr(st, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            raise OSError('a link or reparse point in the repository path: %s' % path)
+        parent = os.path.dirname(path)
+        if parent == path:
+            return
+        path = parent
+
+
+@contextlib.contextmanager
+def _frozen_config(root, argv, env, run, empty):
+    """Windows (R2): the repository configuration is held open for reading with no
+    write or delete sharing until the guarded Git call has exited, so no key can be
+    added between the driver enumeration and Git reading it. The metadata paths are
+    pinned on the command line, and GIT_COMMON_DIR is set. Yields the pinned argv;
+    any failure raises, and the caller refuses."""
+    if sys.platform != 'win32':
+        raise OSError('the configuration freeze needs Windows')
+    api = Win32Api(empty)
+    held = []
+
+    def hold(path):
+        h = api.functions['CreateFileW'](path, _GENERIC_READ, _FILE_SHARE_READ, None,
+                                         _OPEN_EXISTING, _FILE_ATTRIBUTE_NORMAL, None)
+        if h == INVALID_HANDLE:
+            raise api._error('CreateFileW')
+        held.append(h)
+        _reparse_free(path)
+
+    def config(path, *args):
+        return run(argv + ['config', '--no-includes', '--file', path, *args], root)
+
+    def no_includes(path):
+        r = config(path, '--name-only', '--get-regexp', _INCLUDE_KEYS)
+        if r.returncode != 1:
+            raise OSError('include in the repository configuration: %s' % path)
+
+    try:
+        def rev_parse(flag):
+            r = run(argv + ['rev-parse', '--path-format=absolute', flag], root)
+            if r.returncode or not r.stdout.strip():
+                raise OSError('not a repository: %s' % root)
+            return r.stdout.decode('utf-8', 'replace').strip()
+        gitdir, common = rev_parse('--git-dir'), rev_parse('--git-common-dir')
+        main = os.path.join(common, 'config')
+        hold(main)
+        no_includes(main)
+        if config(main, '--bool', '--get', 'extensions.worktreeconfig').stdout.strip() == b'true':
+            worktree = os.path.join(gitdir, 'config.worktree')
+            hold(worktree)
+            no_includes(worktree)
+        _reparse_free(root)
+        _reparse_free(gitdir)
+        env['GIT_COMMON_DIR'] = common
+        yield argv + ['--git-dir=' + gitdir, '--work-tree=' + root]
+    finally:
+        for h in held:
+            api.close_handle(h)
+
+
+#: the configuration keys of the filter, merge and diff drivers an attribute can name
+_DRIVER_KEYS = r'^(filter|merge|diff)\..+\.(clean|smudge|process|driver|command|textconv)$'
+
+#: `git version` of each absolute executable at or above the floor, read once per process
+_VERSION = {}
+
+
+def _at_floor(out):
+    m = re.match(r'git version (\d+)\.(\d+)\.(\d+)', out)
+    return bool(m) and tuple(int(x) for x in m.groups()) >= STORE_GIT_FLOOR
+
+
+def _git_version(workdirs):
+    """The version, refused below the floor. It runs in the pin's empty
+    directory, so the caller's recorded workdirs are checked against the pin
+    area every time: by the spawner when it runs, here when it is cached."""
+    exe = _git_exe()
+    if exe in _VERSION:
+        _outside_executions(_pin_area(), workdirs)
+        return _VERSION[exe]
+    out = LocalNode.store_git('version', ['version'], workdirs=workdirs).strip()
+    if not _at_floor(out):
+        raise StoreError('git %r is older than %s or unreadable'
+                         % (out, '.'.join(map(str, STORE_GIT_FLOOR))))
+    _VERSION[exe] = out
+    return out
+
+
+def _store_pin(mode, git_dir):
+    """The one pin (T-046 C1): argv prefix, environment and cwd of a store call.
+    Of the inherited environment only the platform's own variables survive."""
+    _repos, _pin, empty, cfg = _pin_area()
+    exe = _git_exe()
+    env = {k: os.environ[k] for k in ('SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP') if k in os.environ}
+    env.update(PATH=os.path.dirname(exe), HOME=empty, XDG_CONFIG_HOME=empty,
+               GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=cfg, GIT_CONFIG_SYSTEM=cfg,
+               GIT_TERMINAL_PROMPT='0', GIT_ALLOW_PROTOCOL='file', GIT_PROTOCOL_FROM_USER='0',
+               GIT_NO_LAZY_FETCH='1')
+    argv = [exe]
+    if git_dir is None:                 # version, init: no repository may be discovered
+        env['GIT_CEILING_DIRECTORIES'] = repos_dir()
+        cwd = empty if mode == 'version' else repos_dir()
+    else:
+        argv += ['--git-dir', git_dir, '--no-replace-objects']
+        if mode == 'trusted':
+            argv += ['--attr-source', EMPTY_TREE]
+        if mode == 'seed':              # Core's staging writes no reflog (C-1013-T049)
+            argv += ['-c', 'core.logAllRefUpdates=false']
+        cwd = git_dir
+    for c in ('core.hooksPath=' + empty, 'core.fsmonitor=false', 'core.attributesFile=' + cfg,
+              'submodule.recurse=false', 'gc.auto=0', 'maintenance.auto=false'):
+        argv += ['-c', c]
+    return argv, env, cwd
+
+
+def _pin_area():
+    """`repos/`, `repos/.pin/` and the empty directory and file every pin points Git at."""
+    pin = os.path.join(repos_dir(), '.pin')
+    return repos_dir(), pin, os.path.join(pin, 'empty'), os.path.join(pin, 'empty.cfg')
+
+
+def _pin_files(workdirs):
+    """The pin area, made by Core and refused once anything is in it. Nothing is
+    made until the area is checked against the caller's recorded workdirs, and
+    each level is checked as it is before the next is made below it, then
+    again once made, so no write lands through an alias."""
+    repos, pin, empty, cfg = _pin_area()
+    _outside_executions([repos, pin, empty, cfg], workdirs)
+    home = archeus_home()
+    if not _present(home):
+        os.makedirs(home)                   # its ancestors are not Core's
+    for d in (home, repos, pin, empty):
+        if not _present(d):
+            try:
+                os.mkdir(d)
+            except FileExistsError:
+                pass
+        _plain(d, True)
+    if not _present(cfg):
+        try:
+            open(cfg, 'xb').close()
+        except FileExistsError:
+            pass
+    if os.listdir(empty) or _plain(cfg, False).st_size:
+        raise StoreError('a pin file is not empty: %s' % pin)
+    return pin
+
+
+def _outside_executions(paths_, workdirs):
+    """No store call names a path at or under an execution's area: run/ (every
+    class 1-7 directory), the task worktrees, or a workdir Core recorded
+    (*workdirs*, read from its database by the caller), as written or once its
+    links are resolved."""
+    if isinstance(workdirs, (str, bytes)) or iter(workdirs) is workdirs:
+        raise StoreError('workdirs is a collection of paths, not one path')
+    areas = {os.path.normcase(f(a)) for a in [run_dir(), os.path.join(archeus_home(), 'worktrees')]
+             + [w for w in workdirs if w] for f in (os.path.abspath, os.path.realpath)}
+    for p in paths_:
+        for q in {os.path.normcase(f(p)) for f in (os.path.abspath, os.path.realpath)}:
+            for a in areas:
+                try:
+                    inside = os.path.commonpath([q, a]) == a
+                except ValueError:      # another drive
+                    inside = False
+                if inside:
+                    raise StoreError('a store call at or inside an execution area: %s' % p)
+
+
+def _source(root, workdirs):
+    """A repository Core reads from, refused when anything Git reads it through
+    lies in an execution area or is an alias: its root, its `.git`, the git
+    directory that names, the common directory that one names (config, objects
+    and refs come from there), the config files and refs Git reads, and every
+    object store it borrows from. Each is checked before the file naming the
+    next is read, and nothing is started until all are. Returns the git dir."""
+    if not _abs(root):
+        raise StoreError('not a repository Core may read: %r' % (root,))
+    _outside_executions([root], workdirs)
+    # upload-pack's enter_repo tries <root>/.git, <root>, <root>.git/.git, <root>.git
+    # (path.c): a sibling it could settle on instead of what is checked here is refused
+    if _present(root.rstrip('/\\') + '.git'):
+        raise StoreError('a source with a sibling %s.git upload-pack could take: %s'
+                         % (os.path.basename(root), root))
+    git_dir = _git_dir_of(root)
+    _outside_executions([git_dir], workdirs)
+    _plain(git_dir, True)
+    common = git_dir
+    if _present(os.path.join(git_dir, 'commondir')):
+        _plain(os.path.join(git_dir, 'commondir'), False)
+        # gitrepository-layout: one path; a relative one is against the git dir
+        (common,) = _named_dirs(os.path.join(git_dir, 'commondir'), git_dir, one=True)
+        _outside_executions([common], workdirs)
+        _plain(common, True)
+    # git-config FILES: the repository's config, and config.worktree when
+    # extensions.worktreeConfig names it (read here whenever it exists)
+    for cfg in (os.path.join(common, 'config'), os.path.join(git_dir, 'config.worktree')):
+        if _present(cfg):
+            _plain(cfg, False)
+            with open(cfg, 'rb') as f:
+                # git-config: section names are case-insensitive and only
+                # alphanumerics, '-' and '.', so every include or includeIf
+                # header holds these bytes; a value that merely says the word
+                # is refused too (fail closed: Core follows no include)
+                data = f.read().lower()
+            for word in _SOURCE_CONFIG_REFUSED:
+                if word in data:
+                    raise StoreError('a source config saying %r, which Core does not follow: %s'
+                                     % (word.decode(), cfg))
+    if _present(os.path.join(common, 'reftable')):
+        raise StoreError('a reftable source (extensions.refStorage): %s' % common)
+    # commit.c prepare_commit_graft reads info/grafts and the shallow file to parse a commit
+    for d in {git_dir, common}:
+        for rel in (('HEAD',), ('packed-refs',), ('shallow',), ('info',), ('info', 'grafts')):
+            p = os.path.join(d, *rel)
+            if _present(p):
+                _plain(p, rel == ('info',))
+    if _present(os.path.join(common, 'packed-refs')):
+        with open(os.path.join(common, 'packed-refs'), 'rb') as f:
+            if b'refs/replace/' in f.read():
+                raise StoreError('a source with replace refs: %s' % common)
+    if _present(os.path.join(common, 'refs', 'replace')):
+        raise StoreError('a source with replace refs: %s' % common)
+    for refs in {os.path.join(git_dir, 'refs'), os.path.join(common, 'refs')}:
+        if _present(refs):
+            _plain(refs, True)
+            for d, dirs, files in os.walk(refs):
+                for n in dirs + files:      # checked before os.walk descends into it
+                    _plain(os.path.join(d, n), None)
+    stores = [(os.path.join(common, 'objects'), 0)]
+    while stores:
+        objects, depth = stores.pop()
+        _objects_plain(objects)
+        alternates = os.path.join(objects, 'info', 'alternates')
+        if not _present(alternates):
+            continue
+        if depth == 5:                  # Git itself follows no deeper
+            raise StoreError('alternates nested too deep: %s' % alternates)
+        _plain(alternates, False)
+        # gitrepository-layout: one per line; a relative one is against the objects dir
+        for alt in _named_dirs(alternates, objects):
+            _outside_executions([alt], workdirs)
+            stores.append((alt, depth + 1))
+    return git_dir
+
+
+def _objects_plain(objects):
+    """An object store, its fan-out directories and everything below `info/`
+    and `pack/` (commit-graph chain, multi-pack-index, bitmaps, reverse
+    indexes) are no alias. Their files are not held to one link: `clone
+    --local` hard-links objects, and an object is named by its own hash. A
+    promisor pack (lazy fetch) or http-alternates is refused."""
+    # ponytail: loose object files inside the fan-out directories are not lstat'ed
+    # (O(objects) per read); the directories that hold them are
+    _plain(objects, True)
+    for n in os.listdir(objects):
+        _entry(os.path.join(objects, n), None)
+    for top in (os.path.join(objects, 'info'), os.path.join(objects, 'pack')):
+        if _present(top):
+            _plain(top, True)
+            for d, dirs, files in os.walk(top):
+                for n in dirs + files:          # checked before os.walk descends into it
+                    _entry(os.path.join(d, n), None)
+                    if n.endswith(_PROMISOR_PACK) or n == 'http-alternates':
+                        raise StoreError('a source with %s: %s' % (n, d))
+
+
+def _git_dir_of(root):
+    """The git directory Git takes for *root*: `.git` itself when it is a
+    directory, *root* when there is none, else what the `.git` file names, read
+    as setup.c read_gitfile_gently reads it: the whole file, the exact
+    "gitdir: " prefix, only trailing CR and LF trimmed, a relative path against
+    *root*. What Core could not match exactly is refused: an alias, a file over
+    _GITFILE_MAX, invalid UTF-8, an empty path, a NUL or line break left in it,
+    leading or trailing blanks Git would keep, and on Windows a drive-relative
+    or root-relative path."""
+    dot = os.path.join(root, '.git')
+    if not _present(dot):
+        return root
+    st = _plain(dot, None)
+    if stat.S_ISDIR(st.st_mode):
+        return dot
+    with open(dot, 'rb') as f:
+        data = f.read(_GITFILE_MAX + 1)
+    if len(data) > _GITFILE_MAX or not data.startswith(b'gitdir: '):
+        raise StoreError('a .git file Core does not read: %s' % dot)
+    try:
+        path = data[8:].rstrip(b'\r\n').decode('utf-8')
+    except UnicodeDecodeError:
+        raise StoreError('a .git file that is not UTF-8: %s' % dot)
+    drive, rest = os.path.splitdrive(path)
+    if (not path or any(c in path for c in '\0\r\n') or path != path.strip(' \t')
+            or os.name == 'nt' and bool(drive) != rest.startswith(('/', '\\'))):
+        raise StoreError('a .git file naming a path Core does not resolve: %s' % dot)
+    return os.path.join(root, path)
+
+
+def _named_dirs(path, base, one=False):
+    """The directories a commondir (*one*) or alternates file names, relative
+    ones against *base*; StoreError when Core cannot read them exactly as Git
+    would: unreadable, empty, a second line in a commondir, a comment or quoted
+    line, a carriage return, or anything that is not a directory."""
+    try:
+        with open(path, 'rb') as f:
+            text = f.read().decode('utf-8')
+    except (OSError, UnicodeDecodeError) as e:
+        raise StoreError('cannot read %s: %s' % (path, e))
+    names = [text.rstrip('\r\n')] if one else [x for x in text.split('\n') if x]
+    dirs = [os.path.join(base, x) for x in names]
+    if not names or any(not x or x[0] in '#"' or '\r' in x or '\n' in x for x in names) \
+            or not all(os.path.isdir(d) for d in dirs):
+        raise StoreError('an indirection Core cannot resolve to directories: %s' % path)
+    return dirs
+
+
+def _plain(path, is_dir):
+    """Core's own entry: no link, junction or reparse point, and a file with no
+    second hard link (a linked file is some other path's bytes)."""
+    st = _entry(path, is_dir)
+    if not stat.S_ISDIR(st.st_mode) and st.st_nlink > 1:
+        raise StoreError('a hard-linked file: %s' % path)
+    return st
+
+
+def _layout(store, owned):
+    """Before any read or Git write: the claim, the store and every metadata
+    entry Git resolves in it are plain, so no seal, fetch or ref update writes
+    through an alias."""
+    _plain(owned, False)
+    _plain(store, True)
+    for rel in ('objects', 'refs'):
+        _plain(os.path.join(store, rel), True)
+    for rel in ('config', 'HEAD'):
+        _plain(os.path.join(store, rel), False)
+    # ponytail: loose object files are not lstat'ed one by one (keep-all makes
+    # that O(objects) per open); their directories are
+    for top in (store, os.path.join(store, 'objects')):
+        for n in os.listdir(top):
+            _plain(os.path.join(top, n), None)
+    # everything below these, however deep (commit-graph chains, multi-pack
+    # indexes, bitmaps, reverse indexes): few files, all Git's own
+    for top in ('info', 'refs', os.path.join('objects', 'info'), os.path.join('objects', 'pack')):
+        for d, dirs, files in os.walk(os.path.join(store, top)):
+            for n in dirs + files:      # checked before os.walk descends into it
+                _plain(os.path.join(d, n), None)
+    hooks = os.path.join(store, 'hooks')
+    if _present(hooks) and os.listdir(hooks):
+        raise StoreError('a store with hooks: %s' % store)
+    for rel in (('info', 'attributes'), ('objects', 'info', 'alternates'), ('commondir',),
+                ('config.worktree',)):
+        if _present(os.path.join(store, *rel)):
+            raise StoreError('a store with %s: %s' % ('/'.join(rel), store))
+
+
+def _pin_record(store, version):
+    with open(os.path.join(store, 'config'), 'rb') as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    return {'git': _git_exe(), 'version': version, 'empty_tree': EMPTY_TREE,
+            'config_sha256': digest}
+
+
+# ── K2: the byte core and the seed's consumers (C-1013-T049) ──
+
+def _stream(argv, cwd, env, stdin, sink, timeout):
+    """The byte core of `store_git`: stdout straight into *sink* in fixed chunks,
+    never decoded or kept; stderr drained and capped; *stdin* fed by a thread so
+    neither pipe fills; *stdin* is bytes or an iterable of byte chunks, and an error
+    raised while producing it is the call's failure. A sink that raises, or
+    *timeout*, kills the child, and the
+    call raises; a read that ends because of the kill is a refusal too. On any
+    failure the sink is aborted (it closes what it opened), and every stream is
+    closed either way; neither can replace the failure that got there first."""
+    p = subprocess.Popen(argv, cwd=cwd, env=env, creationflags=proc.no_window_flags,
+                         stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    late, err, fed = threading.Event(), bytearray(), []
+
+    def expire():
+        late.set()
+        p.kill()
+
+    def drain():
+        for chunk in iter(lambda: p.stderr.read(_CHUNK), b''):
+            err.extend(chunk[:max(0, _STDERR_KEEP - len(err))])
+
+    def feed():
+        chunks = iter((stdin,) if isinstance(stdin, bytes) else stdin)
+        try:
+            while True:
+                try:
+                    chunk = next(chunks)
+                except StopIteration:
+                    break
+                except BaseException as e:      # producing the stream failed: that is
+                    fed.append(e)               # the failure, and nothing is finished
+                    p.kill()
+                    break
+                try:
+                    p.stdin.write(chunk)
+                except OSError:
+                    break               # the child is gone: its end decides
+        finally:
+            _quietly(p.stdin.close)     # EOF for the child, on every path
+    # everything after Popen runs under the cleanup below: a helper that fails to
+    # start must not leave the child, its pipes or stdin without an owner
+    timer, started = threading.Timer(timeout, expire), []
+    try:
+        timer.start()
+        for target in (drain, feed) if stdin is not None else (drain,):
+            t = threading.Thread(target=target, daemon=True)
+            t.start()
+            started.append((target, t))
+        for chunk in iter(lambda: p.stdout.read1(_CHUNK), b''):
+            sink.feed(chunk)
+        p.wait()
+        for _target, t in started:
+            t.join()
+        if fed:
+            raise fed[0]
+        if late.is_set():
+            raise StoreError('git %s ran past its deadline' % argv[-1:])
+        if p.returncode:
+            raise StoreError('git failed: %s' % bytes(err).decode('utf-8', 'replace').strip())
+        sink.end()
+    except BaseException:
+        p.kill()
+        _quietly(sink.abort)
+        raise
+    finally:
+        timer.cancel()
+        p.wait()
+        for _target, t in started:
+            t.join()
+        if stdin is not None and feed not in [x for x, _t in started]:
+            _quietly(p.stdin.close)     # no feeder started to close it
+        for pipe in (p.stdout, p.stderr):  # stdin: the feeder's finally
+            _quietly(pipe.close)
+
+
+def _quietly(close):
+    """Cleanup that must not replace the failure it runs under."""
+    try:
+        close()
+    except Exception:
+        pass
+
+
+class _Records:
+    """NUL-ended records handed to `take` as they arrive, bounded while receiving:
+    the first record past SEED_MAX_ENTRIES, a record past SEED_MAX_RECORD or a
+    listing past both multiplied refuses before anything past it is kept."""
+
+    def __init__(self):
+        self.buf, self.n, self.total = b'', 0, 0
+
+    def feed(self, chunk):
+        self.total += len(chunk)
+        if self.total > SEED_MAX_ENTRIES * SEED_MAX_RECORD:
+            raise StoreError('a listing past %d bytes' % (SEED_MAX_ENTRIES * SEED_MAX_RECORD))
+        *recs, self.buf = (self.buf + chunk).split(b'\0')
+        for rec in recs:
+            self.n += 1
+            if self.n > SEED_MAX_ENTRIES or len(rec) > SEED_MAX_RECORD:
+                raise StoreError('a listing past its bounds at record %d' % self.n)
+            self.take(rec)
+        if len(self.buf) > SEED_MAX_RECORD:
+            raise StoreError('a listing record past %d bytes' % SEED_MAX_RECORD)
+
+    def end(self):
+        if self.buf:
+            raise StoreError('a listing that ends inside a record')
+
+    def abort(self):
+        pass                            # it holds nothing open
+
+
+class _Manifest(_Records):
+    """`ls-tree -r -z -l --full-tree`: every entry's mode, type, id, size and path
+    checked as it arrives, and the totals (bytes, case-folded collisions) kept
+    as they grow. *prefix* is the longest directory a file will sit under."""
+
+    def __init__(self, prefix):
+        super().__init__()
+        self.prefix, self.entries, self.dirs, self.size, self.folded = prefix, [], set(), 0, {}
+        self.leaves = set()
+
+    def take(self, rec):
+        head, tab, raw = rec.partition(b'\t')
+        try:
+            mode, kind, oid, size = head.decode('ascii').split()
+            path = raw.decode('utf-8')
+        except ValueError:
+            raise StoreError('a tree entry Core cannot read: %r' % rec[:120])
+        gitlink = mode == '160000'
+        if not (tab and _SEED_KINDS.get(mode) == kind and re.fullmatch(r'[0-9a-f]{40}', oid)
+                and (size == '-' if gitlink else re.fullmatch(r'[0-9]{1,12}', size))):
+            raise StoreError('a tree entry Core does not seed: %r' % rec[:120])
+        _seed_path(path, self.prefix)
+        self.size += 0 if gitlink else int(size)
+        if self.size > SEED_MAX_BYTES:
+            raise StoreError('a tree past %d bytes' % SEED_MAX_BYTES)
+        parts = path.split('/')
+        for i in range(1, len(parts) + 1):
+            p = '/'.join(parts[:i])
+            if self.folded.setdefault(p.casefold(), p) != p:
+                raise StoreError('two paths one case-insensitive name: %r, %r'
+                                 % (self.folded[p.casefold()], p))
+        ancestors = {'/'.join(parts[:i]) for i in range(1, len(parts))}
+        if path in self.dirs or ancestors & self.leaves:
+            raise StoreError('a path both a file and a directory: %r' % path)
+        self.leaves.add(path)
+        self.dirs.update(ancestors)
+        if gitlink:
+            self.dirs.add(path)
+        self.entries.append((mode, oid, None if gitlink else int(size), path))
+
+    def expected(self):
+        out = {d: ('d',) for d in self.dirs}
+        out.update((p, ('f', s, o)) for m, o, s, p in self.entries if m != '160000')
+        return out
+
+
+class _Index(_Records):
+    """`ls-files -s -z`: the (mode, id, path) set of the index Git built."""
+
+    def __init__(self):
+        super().__init__()
+        self.found = set()
+
+    def take(self, rec):
+        head, _tab, raw = rec.partition(b'\t')
+        try:
+            mode, oid, _stage = head.decode('ascii').split()
+            self.found.add((mode, oid, raw.decode('utf-8')))
+        except ValueError:
+            raise StoreError('an index entry Core cannot read: %r' % rec[:120])
+
+
+class _Blobs:
+    """`cat-file --batch` answers, in the order asked: each header must name the
+    id, type and size the manifest gave, its body is streamed into a file Core
+    creates exclusively while Core hashes it, and the id it hashes to must be
+    the one asked for. A missing, truncated, overlong or trailing object refuses."""
+
+    def __init__(self, want):
+        self.want, self.i, self.head, self.left, self.f, self.h = want, 0, b'', None, None, None
+
+    def feed(self, chunk):
+        while chunk:
+            if self.left is None:                       # a header
+                if self.i == len(self.want):
+                    raise StoreError('bytes after the last object')
+                nl = chunk.find(b'\n')
+                self.head += chunk if nl < 0 else chunk[:nl]
+                if len(self.head) > 100:
+                    raise StoreError('an object header Core cannot read')
+                if nl < 0:
+                    return
+                chunk = chunk[nl + 1:]
+                self._open()
+            elif self.left:                             # its body
+                part, chunk = chunk[:self.left], chunk[self.left:]
+                self.f.write(part)
+                self.h.update(part)
+                self.left -= len(part)
+            else:                                       # the newline that ends it
+                if chunk[:1] != b'\n':
+                    raise StoreError('an object longer than its header')
+                chunk = chunk[1:]
+                self._close()
+
+    def _open(self):
+        oid, size, path = self.want[self.i]
+        if self.head != b'%s blob %d' % (oid.encode('ascii'), size):
+            raise StoreError('git gave %r for %s, a blob of %d' % (self.head[:100], oid, size))
+        self.head, self.left = b'', size
+        self.f, self.h = open(path, 'xb'), hashlib.sha1(b'blob %d\0' % size)
+
+    def _close(self):
+        self.f.close()
+        if self.h.hexdigest() != self.want[self.i][0]:
+            raise StoreError('a blob that is not %s' % self.want[self.i][0])
+        self.i, self.left, self.f = self.i + 1, None, None
+
+    def end(self):
+        if self.i != len(self.want) or self.left is not None or self.head:
+            raise StoreError('the objects ended early, at %d of %d' % (self.i, len(self.want)))
+
+    def abort(self):
+        """The file a failure left open is closed; what was written stays in staging."""
+        f, self.f = self.f, None
+        if f is not None:
+            f.close()
+
+
+def seed_ref(execution_id):
+    if not ids.is_id(execution_id, 'execution'):
+        raise StoreError('not an execution id: %r' % (execution_id,))
+    return 'refs/archeus/exec/%s/seed' % execution_id
+
+
+def _seed_path(path, prefix):
+    """T-049 §5: a path Core will write on Windows, or StoreError."""
+    parts = path.split('/')
+    if len(parts) > SEED_MAX_DEPTH or prefix + 1 + len(path) > SEED_MAX_PATH:
+        raise StoreError('a path too deep or too long to seed: %r' % path)
+    for c in parts:
+        if refused_component(c):
+            raise StoreError('a path Core does not seed: %r' % path)
+
+
+#: the clock every seed deadline reads (a test moves it, never the code)
+_clock = time.monotonic
+
+
+class _Deadline:
+    """The one deadline of a whole seed (T-049 §5): read before every Git call, at
+    every entry and hashed MiB of the checks, and immediately before publication."""
+
+    def __init__(self, what):
+        self.end, self.what = _clock() + SEED_DEADLINE, what
+
+    def left(self):
+        left = self.end - _clock()
+        if left <= 0:
+            raise StoreError('the seed of %s ran past its deadline' % self.what)
+        return left
+
+
+def _blob_id(path, size, deadline, seen=None):
+    """The blob id of *path*'s bytes; with *seen*, the lstat the walk made, the
+    opened file must still be that entry."""
+    h = hashlib.sha1(b'blob %d\0' % size)
+    with open(path, 'rb') as f:
+        if seen is not None:
+            st = os.fstat(f.fileno())
+            if (st.st_dev, st.st_ino, st.st_size) != (seen.st_dev, seen.st_ino, seen.st_size):
+                raise StoreError('%s changed after the walk' % path)
+        for chunk in iter(lambda: f.read(1 << 20), b''):
+            deadline.left()
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _seed_walk(top, deadline):
+    """The working tree under *top*, its root `.git` excluded:
+    {path: ('f', size, blob id) | ('d',)}, every entry plain and singly linked."""
+    found = {}
+
+    def walk(d, rel):
+        for name in os.listdir(d):
+            deadline.left()
+            if not rel and name == '.git':
+                continue
+            p, r = os.path.join(d, name), rel + name
+            st = _plain(p, None)
+            if stat.S_ISDIR(st.st_mode):
+                found[r] = ('d',)
+                walk(p, r + '/')
+            else:
+                found[r] = ('f', st.st_size, _blob_id(p, st.st_size, deadline))
+    walk(top, '')
+    return found
+
+
+def _seed_meta(dot, head, rev, deadline):
+    """The seed's `.git`, exactly as Core made it: these names and no other, Core's
+    bytes in HEAD, config and shallow, one ref naming the seed, no borrowed store,
+    and no alias anywhere below it."""
+    names = set(os.listdir(dot))
+    if names != _SEED_META:
+        raise StoreError('a seed .git holding %s' % sorted(names ^ _SEED_META))
+    for name, want in (('HEAD', b'ref: %s\n' % head.encode('ascii')), ('config', SEED_CONFIG),
+                       ('shallow', rev.encode('ascii') + b'\n'), ('index', None)):
+        _plain(os.path.join(dot, name), False)
+        if want is not None:
+            with open(os.path.join(dot, name), 'rb') as f:
+                if f.read() != want:
+                    raise StoreError('a seed .git/%s Core did not write' % name)
+    refs = {}
+    for top in ('objects', 'refs'):
+        _plain(os.path.join(dot, top), True)
+        for d, dirs, files in os.walk(os.path.join(dot, top)):
+            for n in dirs + files:          # checked before os.walk descends into it
+                deadline.left()
+                _plain(os.path.join(d, n), None)
+            if top == 'refs':
+                for n in files:
+                    with open(os.path.join(d, n), 'rb') as f:
+                        refs[os.path.relpath(os.path.join(d, n), dot).replace(os.sep, '/')] = f.read()
+    if refs != {head: rev.encode('ascii') + b'\n'} or os.listdir(os.path.join(dot, 'objects',
+                                                                               'info')):
+        raise StoreError('a seed .git with refs or object stores Core did not make')
+
+
+def _made(top, path, deadline):
+    """*path* and every directory between *top* (Core's) and it: each made by Core
+    when absent, and each plain."""
+    d = top
+    for part in os.path.relpath(path, top).split(os.sep):
+        deadline.left()
+        d = os.path.join(d, part)
+        if not _present(d):
+            try:
+                os.mkdir(d)
+            except FileExistsError:
+                pass
+        _plain(d, True)
+
+
+# ── K3: the import (T-051 §3-§5, C-1013-T051) ──
+
+class _Silent:
+    """`fast-import --quiet` answers nothing on stdout; anything there refuses."""
+
+    def feed(self, chunk):
+        raise StoreError('fast-import wrote to stdout: %r' % chunk[:120])
+
+    def end(self):
+        pass
+
+    def abort(self):
+        pass
+
+
+def _import_ref(execution_id):
+    return seed_ref(execution_id)[:-len('seed')] + 'import'
+
+
+def _import_plan(work, seed, deadline):
+    """The workspace as Core will send it: [(mode, path, id, source)], with
+    {deleted, dropped_dirs}. Core's own walk, never Git and never with *work* as a
+    cwd, the root `.git` (or `git~1`) skipped by name. Every entry is lstat-ed and a
+    link, junction, other reparse point or second hard link refuses the import, as
+    a nested `.git` does (owner Q1, A); so does a path the seed would refuse, a
+    case-insensitive collision, or a bound. A path's mode comes only from the seed
+    map: a seeded 120000 or 160000 is kept by id when unchanged and refuses the
+    import when edited or replaced (C-1013-T051 §3); any other file is the seed's
+    100644/100755, or 100644 when new. A regular file's source is its lstat
+    identity, re-checked when it is opened; an empty directory is dropped, counted."""
+    seeded = {p: (m, o, s) for m, o, s, p in seed.entries}
+    plan, folded, count = [], {}, {'entries': 0, 'bytes': 0, 'dropped_dirs': 0}
+    _plain(work, True)
+
+    def budget(size):
+        count['bytes'] += size
+        if count['bytes'] > SEED_MAX_BYTES:
+            raise StoreError('a workspace past %d bytes' % SEED_MAX_BYTES)
+
+    def walk(d, rel):
+        # one entry at a time, bounds and deadline checked per entry: a directory
+        # is never listed whole first (fast-import takes a tree in any order)
+        with os.scandir(d) as entries:
+            for ent in entries:
+                step(ent.name, d, rel)
+
+    def step(name, d, rel):
+        deadline.left()
+        if not rel and name.casefold() in ('.git', 'git~1'):
+            return
+        r, p = rel + name, os.path.join(d, name)
+        try:
+            r.encode('utf-8')
+        except UnicodeEncodeError:
+            raise StoreError('a path that is not UTF-8: %r' % r)
+        _seed_path(r, len(work))
+        if folded.setdefault(r.casefold(), r) != r:
+            raise StoreError('two paths one case-insensitive name: %r, %r'
+                             % (folded[r.casefold()], r))
+        count['entries'] += 1
+        if count['entries'] > SEED_MAX_ENTRIES:
+            raise StoreError('a workspace past %d entries' % SEED_MAX_ENTRIES)
+        st = _plain(p, None)            # never followed: refused before any use
+        mode, oid, size = seeded.get(r, (None, None, None))
+        isdir = stat.S_ISDIR(st.st_mode)
+        if mode == '160000':
+            if not isdir:
+                raise StoreError('the seeded gitlink %s was changed' % r)
+            with os.scandir(p) as inside:       # empty: one entry is enough to know
+                if next(inside, None) is not None:
+                    raise StoreError('the seeded gitlink %s was changed' % r)
+            plan.append(('160000', r, oid, None))
+        elif mode == '120000':
+            if isdir or st.st_size != size:     # refused before a byte is hashed
+                raise StoreError('the seeded link %s was changed' % r)
+            budget(st.st_size)
+            if _blob_id(p, st.st_size, deadline, seen=st) != oid:
+                raise StoreError('the seeded link %s was changed' % r)
+            plan.append(('120000', r, oid, None))
+        elif isdir:
+            before = len(plan)
+            walk(p, r + '/')
+            if len(plan) == before:
+                count['dropped_dirs'] += 1
+        else:
+            budget(st.st_size)
+            plan.append((mode or '100644', r, None,
+                         (st.st_dev, st.st_ino, st.st_size, p)))
+    walk(work, '')
+    kept = {r for _m, r, _o, _s in plan}
+    return plan, {'deleted': len(set(seeded) - kept), 'dropped_dirs': count['dropped_dirs']}
+
+
+def _import_stream(execution_id, seed_revision, plan, deadline, sent):
+    """The one fast-import stream: a commit on *seed_revision* whose tree is exactly
+    *plan*, Core's identity and time, `done` last so a stream cut short commits
+    nothing. Each file is opened, checked to be the entry the walk saw, and hashed
+    by Core while sent; *sent* fills with {path: (mode, id)}."""
+    msg = b'archeus: the workspace of %s\n' % execution_id.encode('ascii')
+    yield (b'commit %s\ncommitter %s <%s> %d +0000\ndata %d\n%s\nfrom %s\ndeleteall\n'
+           % (_import_ref(execution_id).encode('ascii'), CORE_GIT_NAME.encode('ascii'),
+              CORE_GIT_EMAIL.encode('ascii'), int(time.time()), len(msg), msg,
+              seed_revision.encode('ascii')))
+    for mode, path, oid, source in plan:
+        deadline.left()
+        name = path.encode('utf-8')
+        if source is None:                      # a seeded link or gitlink, by its id
+            yield b'M %s %s %s\n' % (mode.encode('ascii'), oid.encode('ascii'), name)
+            sent[path] = (mode, oid)
+            continue
+        dev, ino, size, p = source
+        with open(p, 'rb') as f:
+            st = os.fstat(f.fileno())
+            if (st.st_dev, st.st_ino, st.st_size) != (dev, ino, size):
+                raise StoreError('%s changed after the walk' % path)
+            h = hashlib.sha1(b'blob %d\0' % size)
+            yield b'M %s inline %s\ndata %d\n' % (mode.encode('ascii'), name, size)
+            left = size
+            while left:
+                deadline.left()
+                chunk = f.read(min(left, 1 << 20))
+                if not chunk:
+                    raise StoreError('%s shrank while it was read' % path)
+                h.update(chunk)
+                left -= len(chunk)
+                yield chunk
+            if f.read(1):
+                raise StoreError('%s grew while it was read' % path)
+        yield b'\n'
+        sent[path] = (mode, h.hexdigest())
+    yield b'done\n'

@@ -4176,7 +4176,7 @@ function ccName(k){
 /* The account is passed by INDEX into CCACCTS, never as a path. A Windows
    config dir is full of backslashes, and interpolating one into a JS string
    literal inside an HTML attribute makes the browser read `\U` and `\.` as
-   escapes: `C:\Users\mab\.claude` arrives as `C:Usersmab.claude`, which then
+   escapes: `C:\Users\<user>\.claude` arrives as `C:Users<user>.claude`, which then
    fails the account allowlist as "invalid cfgdir". */
 function ccInput(k,s,a,ai){
   const v=a.values[k],id=ccId(k,a.dir);
@@ -5328,7 +5328,14 @@ function provTag(kind,name){
    cwd, a worktree is a path, so archeus — which owns both — can say which
    SESSION is in which tree. And every one of them reads the same semantic
    memory, so they are not each rediscovering the codebase. */
-function wtRow(w,repoPath,indent){
+/* Advisory only: two worktrees that changed the same files will conflict at merge. */
+function wtClash(w,overlaps){
+  return (overlaps||[]).filter(o=>o.a===w.path||o.b===w.path).map(o=>{
+    const other=(o.a===w.path?o.b:o.a).split(/[\\/]/).pop();
+    return `<span class="tag warn" title="${esc(o.files.join('\n')+(o.count>o.files.length?'\n…':''))}">${o.count} shared with ${esc(other)}</span>`;
+  }).join('');
+}
+function wtRow(w,repoPath,indent,overlaps){
   const s=w.session,live=s&&s.live;
   return `<div class="hrow" style="padding-left:${indent}px">
       <span class="dot${live?' pip':''}" style="background:${live?'var(--ok)':'var(--dim2)'};color:var(--ok)"></span>
@@ -5337,6 +5344,7 @@ function wtRow(w,repoPath,indent){
       ${w.dirty?`<span class="tag warn">${w.dirty} uncommitted</span>`:'<span class="tag ok">clean</span>'}
       ${w.ahead?`<span class="tag">+${w.ahead}</span>`:''}
       ${w.behind?`<span class="tag warn">-${w.behind}</span>`:''}
+      ${wtClash(w,overlaps)}
       <span style="flex:1;color:var(--dim);font-size:12px">${
         s?`${esc(s.title||s.sid.slice(0,8))} · ${esc(s.account)} · ${s.msgs} msgs · ${live?'live now':fmtAgo(s.age)}`
          :'<span style="color:var(--dim2)">no session here</span>'}</span>
@@ -5370,7 +5378,8 @@ function wtSel(i){
     <div class="kv"><span class="k">Branch</span><span><code>${esc(r.branch||'')}</code></span>
       <span class="k">Path</span><span><code>${esc(r.path||'')}</code></span>
       ${(r.children||[]).length?`<span class="k">Contains</span><span>${r.children.length} ${esc(r.sublabel||'')}</span>`:''}</div>
-    ${wts.length?wts.map(w=>wtRow(w,r.path,0)).join('')
+    ${r.overlaps_skipped?`<div class="empty">More than a handful of worktrees: shared-file check skipped.</div>`:''}
+    ${wts.length?wts.map(w=>wtRow(w,r.path,0,r.overlaps)).join('')
       :'<div class="empty">One checkout, no linked worktrees.</div>'}`;
 }
 async function drawWorktrees(){
@@ -7801,18 +7810,27 @@ async function drawOwnModel(row){
      the catalogue it ships with, which is what makes a FRESH install offer
      anything at all instead of an empty box. A <datalist> keeps its group
      headings, so the split survives into the dropdown. */
-  const seen=d.models||[],cards=(d.cards||[]).filter(c=>seen.indexOf(c.id)<0);
+  /* `configured` comes first: it is the CLI's own answer to what this home can
+     RUN (pi's --list-models). `run here` and `ships with this CLI` are only
+     suggestions, and each drops what an earlier group already lists (C-22). */
+  const conf=d.configured||[],
+        seen=(d.models||[]).filter(m=>conf.indexOf(m)<0),
+        cards=(d.cards||[]).filter(c=>seen.indexOf(c.id)<0&&conf.indexOf(c.id)<0);
   const dl=$('#fOwnModels');
   if(dl)dl.innerHTML=
-    (seen.length?`<optgroup label="run here">`
+    (conf.length?`<optgroup label="configured for this account">`
+      +conf.map(m=>`<option value="${esc(m)}">`).join('')+`</optgroup>`:'')
+    +(seen.length?`<optgroup label="run here">`
       +seen.map(m=>`<option value="${esc(m)}">`).join('')+`</optgroup>`:'')
     +(cards.length?`<optgroup label="ships with this CLI">`
       +cards.map(c=>`<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('')
       +`</optgroup>`:'');
   const note=$('#fOwnModelNote');
-  if(note)note.textContent=seen.length||cards.length
-    ? '— '+[seen.length&&seen.length+' run here',
+  if(note)note.textContent=conf.length||seen.length||cards.length
+    ? '— '+[conf.length&&conf.length+' configured for this account',
+            seen.length&&seen.length+' run here',
             cards.length&&cards.length+' in its catalogue'].filter(Boolean).join(', ')
+      +(d.configured_why?' (configured: '+d.configured_why+')':'')
       +'; type any other'
     : '— archeus has not seen this CLI run yet; type a model id';
   const es=d.efforts||[''];
@@ -8064,6 +8082,8 @@ function segDraw(){
 $('#segTui').onclick=()=>setMode('tui');
 $('#segGui').onclick=()=>setMode('gui');
 $('#bHelp').onclick=()=>go('helpp');
+$('#bOpenV1').onclick=async()=>{const r=await post('/api/v1/open',{});
+  toast(r.ok?'Archeus V1 opened in your browser':r.error,r.ok?'':'err');};
 /* ── the sidebar's top row ──
    It carried a logo, the product name and a tagline. The tagline is gone: it is
    a website device — its audience is someone who does not yet know what the

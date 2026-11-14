@@ -12,9 +12,12 @@ import re
 import json
 from collections import Counter
 
+from archeus.core.redact import redact
+
 from . import config as _c
 from . import store
 from .memory import tokens_estimate
+from .render import clean
 
 CLAUDEMD_TOKEN_WARN = 1500
 BURN_WARN_PCT = 70
@@ -30,7 +33,69 @@ def check_project(project_path, proj_folder):
     out += _check_dirs(proj_folder)
     out += _check_burn()
     out += _check_mcp()
+    out += _check_settings_hygiene(project_path)
     return out
+
+
+def settings_hygiene(project_path):
+    """[{'path', 'line', 'rule', 'sample'}]: what the shared redactor finds in this
+    project's Claude Code settings files and in Archeus's own memory rule files (Claude
+    Code's "Don't ask again" stores the whole command, inline password included), and
+    which of those files git would commit (`line` 0). Report only, owner item 101:
+    nothing here edits, untracks or gitignores a file."""
+    from .memrules import RULE_PREFIX
+    from .repos import _git
+    rules = os.path.join(project_path or '', '.claude', 'rules')
+    files = [os.path.join('.claude', n) for n in ('settings.json', 'settings.local.json')]
+    if os.path.isdir(rules):
+        try:
+            files += [os.path.join('.claude', 'rules', n) for n in sorted(os.listdir(rules))
+                      if n.startswith(RULE_PREFIX)]
+        except OSError:
+            pass
+    out, present = [], []
+    for rel in files:
+        try:
+            with open(os.path.join(project_path, rel), encoding='utf-8', errors='replace') as f:
+                text = f.read()
+        except OSError:
+            continue
+        present.append(rel)
+        kind_of = {}
+        if rel.endswith('.json'):
+            try:
+                for kind, items in (json.loads(text).get('permissions') or {}).items():
+                    for r in items if isinstance(items, list) else ():
+                        kind_of[json.dumps(r)] = 'permissions.' + kind
+            except (ValueError, AttributeError):
+                pass
+        default = 'setting' if rel.endswith('.json') else 'memory rule'
+        for i, line in enumerate(text.splitlines(), 1):
+            masked = redact(line)
+            if masked != line:
+                out.append({'path': rel, 'line': i, 'rule': kind_of.get(line.strip().rstrip(','), default),
+                            'sample': masked.strip()[:160]})
+    exposed = {f['path'] for f in out} | {r for r in present if r.endswith('settings.local.json')}
+    listed = _git(['ls-files', '-t', '-z', '--cached', '--others', '--exclude-standard', '--']
+                  + [r.replace(os.sep, '/') for r in sorted(exposed)], project_path) if exposed else None
+    for row in (listed or '').split('\0'):
+        tag, _, rel = row.partition(' ')
+        if os.path.normpath(rel) in exposed:
+            out.append({'path': os.path.normpath(rel), 'line': 0,
+                        'rule': 'not ignored by git' if tag == '?' else 'tracked by git', 'sample': ''})
+    return out
+
+
+def _check_settings_hygiene(project_path):
+    try:
+        found = settings_hygiene(project_path)
+    except Exception:
+        return []
+    return [('warn', clean('%s:%d: a secret in %s: %s' % (f['path'], f['line'], f['rule'], f['sample'])),
+             'take it out by hand and rotate it; Archeus never edits this file') if f['line'] else
+            ('warn', clean('%s is %s' % (f['path'], f['rule'])),
+             'gitignore it or `git rm --cached` it by hand; Archeus never changes it')
+            for f in found]
 
 
 def _check_claudemd(project_path):
@@ -184,7 +249,8 @@ def frequent_bash_commands(proj_folder, min_count=3, top_k=10):
                         and block.get('name') == 'Bash'):
                     words = str((block.get('input') or {}).get('command', '')).split()
                     word = words[0].lower() if words else ''
-                    if word and re.fullmatch(r'[a-z0-9_.-]+', word):
+                    # a token run as a command (`sk-...`) passes the character test
+                    if word and re.fullmatch(r'[a-z0-9_.-]+', word) and redact(word) == word:
                         counts[word] += 1
     return [(w, c) for w, c in counts.most_common() if c >= min_count][:top_k]
 

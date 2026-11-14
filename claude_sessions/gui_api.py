@@ -41,39 +41,9 @@ class JobCancelled(Exception):
     """Raised inside a job thread when the user cancels."""
 
 
-def _claude_failure_reason(stdout):
-    """The sentence a human needs, out of what `claude -p` printed before it
-    exited non-zero.
-
-    `--output-format json` (which `memory._claude_json` asks for) puts the
-    refusal in `result`, behind ~200 characters of `duration_api_ms`,
-    `stop_reason`, `session_id`, `total_cost_usd` and `usage`. Everything that
-    reports a failure truncates, so what actually reached the user — the job
-    banner, the Logs page, the event log — was a clipped JSON blob with the
-    reason cut off. Twenty of those are sitting in this machine's event log, and
-    every one of them means "You've hit your session limit · resets 2:30am".
-
-    Falls through to the raw text unchanged when stdout is not that envelope
-    (`--print`, a crash, a stack trace), so nothing is hidden.
-    """
-    raw = (stdout or '').strip()
-    if not raw.startswith('{'):
-        return raw
-    try:
-        env = json.loads(raw)
-    except Exception:
-        return raw
-    if not isinstance(env, dict):
-        return raw
-    for key in ('result', 'error', 'message'):
-        v = env.get(key)
-        if isinstance(v, str) and v.strip():
-            return v.strip()
-        if isinstance(v, dict):                     # {"error": {"message": ...}}
-            m = v.get('message')
-            if isinstance(m, str) and m.strip():
-                return m.strip()
-    return raw
+# Moved to the UI-free `llmcall` (P0.5 seam); re-exported under the name
+# `ui.py` and the tests import.
+from .llmcall import failure_reason as _claude_failure_reason  # noqa: E402
 
 
 def _run_cancellable(cmd, input_text=None, capture_output=True, text=True,
@@ -82,7 +52,11 @@ def _run_cancellable(cmd, input_text=None, capture_output=True, text=True,
     """subprocess.run replacement that honours the current job's cancel_event.
 
     Returns stdout string (or '' on cancel/failure). Raises JobCancelled if
-    the user cancels while the subprocess is running."""
+    the user cancels while the subprocess is running.
+
+    The process itself runs in `llmcall.run_headless`; this wrapper adds what
+    belongs to the legacy job runtime: the quota preflight, the job's process
+    list and cancel event, and the failure records its callers read."""
     job = getattr(_JOBCTX, 'job', None)
     if job and job.get('cancel_event', threading.Event()).is_set():
         raise JobCancelled
@@ -92,80 +66,38 @@ def _run_cancellable(cmd, input_text=None, capture_output=True, text=True,
     env, _blocked = quota.preflight(cmd, env)
     if _blocked:
         return ''
-    try:
-        # CREATE_NO_WINDOW: a captured child shows nothing in its console,
-        # so the window is pure flicker. See proc.no_window_flags.
-        from .proc import no_window_flags
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE if capture_output else None,
-                                stderr=subprocess.STDOUT if capture_output else None,
-                                text=text, encoding=encoding, errors=errors,
-                                cwd=cwd, env=env, creationflags=no_window_flags)
-    except Exception:
-        return ''
-    if job is not None:
-        job.setdefault('procs', []).append(proc)
-    killed = threading.Event()
+    from . import llmcall
+    spawned = []
 
-    def _watch():
-        if job is None:
-            return
-        while not killed.is_set():
-            if job['cancel_event'].wait(timeout=1.0):
-                break
-        if not killed.is_set() and proc.poll() is None:
-            _proc.kill_tree(proc)
+    def _track(proc):
+        spawned.append(proc)
+        if job is not None:
+            job.setdefault('procs', []).append(proc)
 
-    t = threading.Thread(target=_watch, daemon=True)
-    t.start()
     try:
-        stdout, _ = proc.communicate(input=input_text, timeout=timeout)
-        stdout = (stdout or '').strip() if capture_output else ''
-        # stderr is merged into stdout above, so a failed CLI run looks exactly
-        # like a successful one to every caller unless the exit code is checked.
-        if proc.returncode:
-            reason = _claude_failure_reason(stdout)
+        r = llmcall.run_headless(
+            cmd, input_text, cwd=cwd, env=env, timeout=timeout,
+            cancel=job['cancel_event'] if job is not None else None,
+            on_spawn=_track, capture_output=capture_output, text=text,
+            encoding=encoding, errors=errors)
+        if r.returncode:
             if job is not None:
-                job['last_subprocess_error'] = {'code': proc.returncode, 'output': reason}
+                job['last_subprocess_error'] = {'code': r.returncode, 'output': r.reason}
             # The scheduler and the detached memory worker have NO job context,
             # so `if job is not None` dropped the reason on the floor for
             # precisely the two callers that run unattended — a rate-limited
             # account produced six silent failures an hour, reported as
             # "queued". Record it where any caller can read it.
             from . import memory as _mem
-            _mem.last_call_error = 'claude exited %s: %s' % (
-                proc.returncode, (reason or '(no output)')[:300])
-            from . import events, quota
-            # the ENVELOPE, not the extracted sentence: a marker could live in a
-            # field the sentence does not carry, and this test is a cheap
-            # substring scan over text we already have in memory
-            quota.note_failure(cmd, env, stdout)
-            events.record('subprocess', _mem.last_call_error,
-                          detail=' '.join(str(c) for c in cmd[:2]))
+            _mem.last_call_error = r.error
             return ''
-        return stdout
-    except subprocess.TimeoutExpired:
-        try: proc.kill()
-        except Exception: pass
-        msg = ('timed out after %ss — upstream may be an unresponsive '
-               'OmniRoute/failover endpoint' % timeout)
-        if job is not None:
-            job.setdefault('messages', []).append({'ok': False, 'text': msg})
-        # a job's message list is not a record, and the two unattended callers
-        # have no job at all — so the timeout was reaching nothing
-        from . import events
-        events.record('subprocess', msg,
-                      detail=' '.join(str(c) for c in cmd[:2]))
-        return ''
-    except Exception:
-        try: proc.kill()
-        except Exception: pass
-        return ''
+        if r.timed_out and job is not None:
+            job.setdefault('messages', []).append({'ok': False, 'text': r.error})
+        return r.stdout if r.returncode == 0 else ''
     finally:
-        killed.set()
-        t.join(timeout=2)
-        if job is not None and proc in job.get('procs', []):
-            job['procs'].remove(proc)
+        for proc in spawned:
+            if job is not None and proc in job.get('procs', []):
+                job['procs'].remove(proc)
         if job is not None and job['cancel_event'].is_set():
             raise JobCancelled
 
@@ -857,12 +789,15 @@ def start_auto_memory_scheduler():
     sooner, however much work is left, and the clock SURVIVES the process.
     Started by the real entry points only (never make_server, so tests don't
     spawn refreshes). Idempotent."""
-    global _sched_started
+    global _sched_started, _sched_stop
     if _sched_started:
         return
     _sched_started = True
     import threading
-    _sched_stop.clear()
+    # A fresh event per start, not clear() on the old one: a loop that stop()
+    # has signalled but not yet woken must keep seeing its own stop, and not
+    # the cleared flag a later start() leaves behind.
+    stop = _sched_stop = threading.Event()
 
     def _loop():
         # The interval is a budget, so it is counted from the last pass and not
@@ -874,9 +809,9 @@ def start_auto_memory_scheduler():
         # wait(), not sleep(): server_close() must be able to end this, and a
         # thread parked in sleep(3600) cannot be told anything.
         due = _last_pass() + _next_wait() - time.time()
-        if _sched_stop.wait(max(STARTUP_DELAY, due)):
+        if stop.wait(max(STARTUP_DELAY, due)):
             return
-        while not _sched_stop.is_set():
+        while not stop.is_set():
             owed = False
             try:
                 owed = _auto_scan_pass()
@@ -885,7 +820,7 @@ def start_auto_memory_scheduler():
             # after the pass, whatever it found: the budget is one pass per
             # interval, and a pass that found nothing stale still happened
             _mark_pass()
-            _sched_stop.wait(_next_wait(owed))
+            stop.wait(_next_wait(owed))
 
     threading.Thread(target=_loop, daemon=True).start()
 
@@ -964,7 +899,7 @@ def _managed_path_ok(v):
     """Is this somewhere archeus is allowed to DELETE?
 
     `os.remove(body['file'])` and `shutil.rmtree(body['dir'])` were reachable
-    with any path at all, so `{"dir": "C:\\\\Users\\\\mab"}` was a recursive
+    with any path at all, so `{"dir": "C:\\\\Users\\\\<user>"}` was a recursive
     delete of the home directory. The token gates it, but a guard that only
     holds while a secret does is one layer, not two.
 
@@ -973,12 +908,18 @@ def _managed_path_ok(v):
     instead: a harness home (which `_cfgdir_ok` already knows), or anything
     below one of the directory names a harness declares for project-scoped
     artifacts, which is where every project-scoped one lives by construction.
+
+    A home itself is never deletable, only what sits inside it: deleting the
+    home takes the account's whole config with it. The home roots are refused
+    before the managed-name check, which would otherwise accept a home named
+    like a project directory.
     """
     p = os.path.normcase(os.path.abspath(v))
-    for _hid, d in _harnesses._homes():
-        root = os.path.normcase(os.path.abspath(d))
-        if p == root or p.startswith(root + os.sep):
-            return True
+    roots = [os.path.normcase(os.path.abspath(d)) for _hid, d in _harnesses._homes()]
+    if p in roots:
+        return False
+    if any(p.startswith(root + os.sep) for root in roots):
+        return True
     return bool(set(p.split(os.sep)) & _harnesses.managed_dir_names())
 
 
@@ -2093,7 +2034,10 @@ def api_worklog_get(q, body):
 def api_worklog_set(q, body):
     """Per-project recent-work memory on/off."""
     from . import hooks, memhub
-    on = memhub.set_worklog(body.get('enc', ''), body.get('on'))
+    try:
+        on = memhub.set_worklog(body.get('enc', ''), body.get('on'))
+    except ValueError as e:
+        raise BadRequest(str(e))
     return {'ok': True, 'on': on,
             'installed': hooks.across_accounts(hooks.worklog_hook_installed)}
 
@@ -2104,7 +2048,10 @@ def api_memory_toggles(q, body):
     from . import hooks, memhub
     enc = body.get('enc', '')
     if 'hook' in body:
-        memhub.set_prompt_hook(enc, body['hook'])
+        try:
+            memhub.set_prompt_hook(enc, body['hook'])
+        except ValueError as e:
+            raise BadRequest(str(e))
     if 'rules' in body:
         memhub.set_memory_rules(body['rules'], body.get('path'),
                                 _folder(body.get('cfgdir'), enc) if enc else None)
@@ -2185,6 +2132,8 @@ def api_skill_remove(q, body):
 
 def api_skill_create(q, body):
     from .skills import write_skill, _slug
+    if not isinstance(body['name'], str):
+        raise BadRequest('name must be a string')
     skill_dir = os.path.join(_skill_dest(body), _slug(body['name']))
     meta = {'name': _slug(body['name']), 'description': body.get('description', '')}
     if body.get('tools'):
@@ -2349,7 +2298,7 @@ def _harness_homes_post(s, hid, act, name, body):
 
 def api_accounts_post(q, body):
     from .config import load_settings, save_settings
-    from .accounts import _resolved
+    from .accounts import _resolved, same_account_dir
     s = load_settings()
     act, name = body.get('action'), body.get('name', '')
     hid = _hid_of(q, body)
@@ -2360,13 +2309,17 @@ def api_accounts_post(q, body):
         save_settings(s)
         return r
     if act == 'add':
+        if not str(name or '').strip():
+            return {'ok': False, 'error': 'name required'}
         d = body.get('dir') or os.path.join(_c._USERPROFILE, f'.claude-{name}')
         os.makedirs(_resolved(d), exist_ok=True)
         s['accounts'] = [a for a in s.get('accounts', []) if a.get('name') != name]
         s['accounts'].append({'name': name, 'dir': d})
     elif act == 'switch':
         d = '' if name == 'default' else next(
-            (a['dir'] for a in s.get('accounts', []) if a.get('name') == name), '')
+            (a['dir'] for a in s.get('accounts', []) if a.get('name') == name), None)
+        if d is None:
+            return {'ok': False, 'error': 'unknown account'}
         s['claude_config_dir'] = d
     elif act == 'rename':
         new = body.get('new', '')
@@ -2379,7 +2332,7 @@ def api_accounts_post(q, body):
     elif act == 'remove':
         d = next((a['dir'] for a in s.get('accounts', []) if a.get('name') == name), '')
         s['accounts'] = [a for a in s.get('accounts', []) if a.get('name') != name]
-        if os.path.expanduser(s.get('claude_config_dir', '')) == os.path.expanduser(d):
+        if same_account_dir(d, s.get('claude_config_dir', '')):
             s['claude_config_dir'] = ''
     else:
         return {'ok': False, 'error': 'unknown action'}
@@ -2659,7 +2612,7 @@ def api_lessons_get(q, body):
     from .memory import load_memory
     mem = load_memory(q['path'], _folder(q.get('cfgdir'), q['enc']))
     lessons = [e for e in mem.get('entities', []) if e.get('type') == 'lesson']
-    lessons.sort(key=lambda e: (e.get('status') != 'pending',
+    lessons.sort(key=lambda e: (e.get('status', 'pending') != 'pending',
                                 -e.get('confidence', 0)))
     from .config import load_settings
     return {'lessons': [{'id': e.get('id'), 'name': e.get('name', ''),
@@ -2794,19 +2747,20 @@ def api_history_diff(q, body):
                                (json.loads(t).get('entities') or [])}
             try:
                 back, gone = names(old) - names(cur), names(cur) - names(old)
-            except Exception:
-                back, gone = set(), set()
-            lines = [f"--- now: {a['entities']} entities, {a['relations']} relations, "
-                     f"{a['lessons']} lessons",
-                     f"+++ snapshot: {b['entities']} entities, {b['relations']} relations, "
-                     f"{b['lessons']} lessons", '@@ what restoring would change @@']
-            lines += [f"+ {n}" for n in sorted(back)[:60]]
-            lines += [f"- {n}" for n in sorted(gone)[:60]]
-            if len(back) > 60 or len(gone) > 60:
-                lines.append(f"@@ …and {max(0, len(back) - 60) + max(0, len(gone) - 60)} more @@")
-            if not back and not gone:
-                lines.append('  the same facts — only their summaries or counters moved')
-            return {'title': diffview.TITLES.get(key, key), 'diff': lines}
+            except Exception:  # unhashable names in a hand-edited graph: the line diff below still works
+                back = None
+            if back is not None:
+                lines = [f"--- now: {a['entities']} entities, {a['relations']} relations, "
+                         f"{a['lessons']} lessons",
+                         f"+++ snapshot: {b['entities']} entities, {b['relations']} relations, "
+                         f"{b['lessons']} lessons", '@@ what restoring would change @@']
+                lines += [f"+ {n}" for n in sorted(back)[:60]]
+                lines += [f"- {n}" for n in sorted(gone)[:60]]
+                if len(back) > 60 or len(gone) > 60:
+                    lines.append(f"@@ …and {max(0, len(back) - 60) + max(0, len(gone) - 60)} more @@")
+                if not back and not gone:
+                    lines.append('  the same facts — only their summaries or counters moved')
+                return {'title': diffview.TITLES.get(key, key), 'diff': lines}
     # old=current, new=snapshot: the diff reads as "what restoring would do"
     return {'title': diffview.TITLES.get(key, key),
             'diff': diffview.unified(cur, old, diffview.TITLES.get(key, key))}
@@ -2845,7 +2799,10 @@ def api_deny_scan(q, body):
 def api_deny_apply(q, body):
     from .denygen import scan_heavy, merge_deny
     pats = [p for p, _ in scan_heavy(body['path'])]
-    added, existed = merge_deny(body['path'], pats)
+    merged = merge_deny(body['path'], pats)
+    if merged is None:
+        return {'ok': False, 'error': 'settings.json is not a plain JSON object or permissions.deny is not a list; left unchanged'}
+    added, existed = merged
     return {'ok': True, 'added': added, 'existed': existed}
 
 
@@ -3254,6 +3211,23 @@ def api_open_path(q, body):
             'name': os.path.basename(cand) or cand}
 
 
+def api_open_v1(q, body):
+    """The sidebar foot's "Open Archeus V1" (p19-design-gate B8): asks the
+    running Core for a launch code, as `archeus core --open` does, and opens
+    the app in the system browser. It never starts Core."""
+    import webbrowser
+    from archeus.cli import main as v1
+    from archeus.infra import discovery
+    state, info = discovery.discover()
+    if state != 'running':
+        return {'ok': False, 'error': 'Archeus Core is not running: start it with `archeus core`'}
+    url = v1.launch_url(info)
+    if url is None:
+        return {'ok': False, 'error': 'Archeus Core did not give a launch code'}
+    webbrowser.open(url)
+    return {'ok': True}
+
+
 # ── hand-off (context injection) & plan-execute ──────────────
 #
 # `/api/inject/sessions` used to live here: it listed every session of the
@@ -3275,7 +3249,6 @@ def api_inject_launch(q, body):
     `/api/inject/sessions`, which is not a check. `cfgdir` goes through
     `PARAM_CHECKS` -> `_cfgdir_ok`, so it must name an account archeus knows.
     """
-    import subprocess
     from .context_inject import _write_context_file, CTX_FILE
     from .config import get_claude_exe, launch_defaults
     from .sessions import load_add_dirs, read_extra_paths
@@ -4518,6 +4491,18 @@ def api_harness_models(q, body):
     # one consumer of `cost` is the pricing table in `stats`, which reads the
     # catalogue directly and server-side.
     cards = [{'id': c['id'], 'label': c['label']} for c in cards]
+    # `configured` is what THIS home can run, in the CLI's own words (C-22) —
+    # a third list, because "ships with this CLI" says nothing about a login
+    # and "run here" says nothing about whether it still runs. A failed answer
+    # is an empty list and its reason, never the catalogue in its place.
+    configured, configured_why = [], ''
+    if d.get('configured'):
+        try:
+            got_c = _h.impl('configured', d['id'])(_h.home_dir(d['id']))
+            configured = [m['id'] for m in got_c['models']]
+            configured_why = got_c['why']
+        except Exception as e:
+            configured_why = '%s: %s' % (type(e).__name__, e)
     # a preset naming a model no catalogue publishes is dropped rather than
     # offered: the whole point of a quick start is that clicking it works, and
     # an id that 404s on the first turn is worse than no button. With no
@@ -4528,7 +4513,8 @@ def api_harness_models(q, body):
                for n, b, f in (d.get('presets') or ())
                if not known or (f.get('model') or '') in known]
     return dict(_launch_vocab(d), models=got, catalogue=False,
-                cards=cards, presets=presets)
+                cards=cards, presets=presets, configured=configured,
+                configured_why=configured_why)
 
 
 def _launch_vocab(d):
@@ -4800,6 +4786,7 @@ POST_ROUTES = {
     '/api/extra-paths': api_extra_paths_set,
     '/api/add-dirs': api_add_dirs_set,
     '/api/open-path': api_open_path,
+    '/api/v1/open': api_open_v1,
     '/api/quit': api_quit,
     '/api/health/allowlist': api_health_allowlist,
     '/api/conventions/sync': api_conventions_sync,

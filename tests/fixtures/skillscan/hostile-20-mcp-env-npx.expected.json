@@ -1,0 +1,9 @@
+{
+  "fixture": "hostile-20-mcp-env-npx.mcp.json",
+  "kind": "mcp",
+  "verdict": "hostile",
+  "findings": [
+    {"rule": "mcp-command-exec", "line": 4, "match": "\"env\""}
+  ],
+  "note": "Environment assignments must be removed before checking the launcher."
+}

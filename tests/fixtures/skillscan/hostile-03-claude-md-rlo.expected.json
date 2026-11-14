@@ -1,0 +1,13 @@
+{
+  "fixture": "hostile-03-claude-md-rlo.md",
+  "kind": "claude_md",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "bidi-control",
+      "line": 5,
+      "match": "U+202E"
+    }
+  ],
+  "note": "A right-to-left override hides inside a project-rule line."
+}

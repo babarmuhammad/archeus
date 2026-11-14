@@ -139,7 +139,8 @@ def write_skill(skill_dir, meta, body):
     """Write <skill_dir>/SKILL.md with frontmatter. Returns True on success."""
     order = ['name', 'description', 'allowed-tools']
     keys = order + [k for k in meta if k not in order]
-    fm = '\n'.join(f"{k}: {meta[k]}" for k in keys if meta.get(k))
+    # one line per value: a newline in a description would add keys such as allowed-tools
+    fm = '\n'.join(f"{k}: {' '.join(str(meta[k]).split())}" for k in keys if meta.get(k))
     out = f"---\n{fm}\n---\n\n{body.rstrip()}\n"
     try:
         os.makedirs(skill_dir, exist_ok=True)
@@ -397,7 +398,11 @@ def install_skill(src_dir, dest_root):
     "everywhere" must not have to know which one that is."""
     if not src_dir or not dest_root or not os.path.isfile(skill_md(src_dir)):
         return ''
-    dest = os.path.join(dest_root, os.path.basename(src_dir))
+    # normpath: a trailing separator gives basename '' and dest == dest_root, which the rmtree below wipes
+    dest = os.path.join(dest_root, os.path.basename(os.path.normpath(src_dir)))
+    # the rmtree below would delete the source itself (install_personal of a personal skill)
+    if os.path.normcase(os.path.realpath(src_dir)) == os.path.normcase(os.path.realpath(dest)):
+        return dest
     try:
         os.makedirs(dest_root, exist_ok=True)
         if os.path.isdir(dest):
@@ -545,7 +550,7 @@ def delete_personal(skill_dir, all_accounts=True):
     The other half of the fan-out: installing everywhere and deleting in one
     place turns "installed" into "installed in four places you forgot about".
     """
-    base = os.path.basename(skill_dir)
+    base = os.path.basename(os.path.normpath(skill_dir))
     gone = []
     for name, root in (_harnesses.skill_roots() if all_accounts
                        else [('', personal_dir())]):
@@ -558,7 +563,7 @@ def delete_personal(skill_dir, all_accounts=True):
 def personal_accounts(skill_dir):
     """Which accounts and CLIs already have a personal skill by this name —
     what the confirmation dialog needs in order to say what it is about to do."""
-    base = os.path.basename(skill_dir)
+    base = os.path.basename(os.path.normpath(skill_dir))
     return [name for name, root in _harnesses.skill_roots()
             if os.path.isfile(skill_md(os.path.join(root, base)))]
 

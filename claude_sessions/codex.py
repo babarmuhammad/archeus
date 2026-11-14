@@ -42,7 +42,9 @@ _COLS = ('id', 'rollout_path', 'cwd', 'preview', 'first_user_message',
 
 def db_path(home):
     """The newest state database under *home*, or ''."""
-    got = sorted(glob.glob(os.path.join(home or '', 'state_*.sqlite')))
+    if not home:
+        return ''
+    got = sorted(glob.glob(os.path.join(home, 'state_*.sqlite')))
     return got[-1] if got else ''
 
 
@@ -164,12 +166,16 @@ def _count(rollout):
     `developer` and `user`, so counting those reports three turns for a session
     in which the user said one thing.
     """
+    if not rollout:
+        return 0
     n = 0
     for obj in _t.iter_json(rollout, prefilter='event_msg'):
         if obj.get('type') != 'event_msg':
             continue
-        if (obj.get('payload') or {}).get('type') in ('user_message',
-                                                      'agent_message'):
+        payload = obj.get('payload')
+        if not isinstance(payload, dict):
+            continue
+        if payload.get('type') in ('user_message', 'agent_message'):
             n += 1
     return n
 
@@ -191,7 +197,9 @@ def fold(obj, s):
                 s['last_ts'] = ep
 
     kind = obj.get('type')
-    p = obj.get('payload') or {}
+    p = obj.get('payload')
+    if not isinstance(p, dict):
+        p = {}
     if kind == 'session_meta':
         if p.get('cwd'):
             s['cwd'] = real_cwd(p['cwd'])

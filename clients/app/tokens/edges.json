@@ -1,0 +1,125 @@
+{
+  "$comment": "The one vocabulary of relationships (p18-design-gate A1; p19-design-gate B1): per field Core's graph route emits, the words read at the row that holds the field, then at the row it names. tools/gen_ui.py writes it into the SPA (src/graph/edgeWords.ts) and the TUI (archeus/cli/tui/_tables.py); Core names the field and never the words.",
+  "words": {
+    "missions.project_id": [
+      "in project",
+      "mission"
+    ],
+    "Mission.context_package_id": [
+      "context used",
+      "context for mission"
+    ],
+    "Mission.origin_ref": [
+      "started from",
+      "started mission"
+    ],
+    "plans.mission_id": [
+      "of mission",
+      "plan"
+    ],
+    "approvals.mission_id": [
+      "waiting on approval",
+      "awaited by mission"
+    ],
+    "plans.supersedes_plan_id": [
+      "replaces",
+      "replaced by"
+    ],
+    "Plan.context_package_id": [
+      "context used",
+      "context for plan"
+    ],
+    "Plan.route_decision_id": [
+      "planned by",
+      "planned"
+    ],
+    "Task.depends_on": [
+      "after",
+      "before"
+    ],
+    "tasks.plan_id": [
+      "in plan",
+      "task"
+    ],
+    "executions.task_id": [
+      "attempt of task",
+      "attempt"
+    ],
+    "executions.mission_id": [
+      "of mission",
+      "execution"
+    ],
+    "Execution.handoff_from": [
+      "continues",
+      "continued by"
+    ],
+    "Execution.session_id": [
+      "runs in session",
+      "runs"
+    ],
+    "Execution.route_decision_id": [
+      "routed by",
+      "routed"
+    ],
+    "Execution.policy_decision_id": [
+      "authorised by",
+      "authorised"
+    ],
+    "Verification.subject": [
+      "verifies",
+      "verified by"
+    ],
+    "verifications.plan_id": [
+      "of plan",
+      "verification"
+    ],
+    "Verification.execution_id": [
+      "checked the work of",
+      "checked by"
+    ],
+    "reviews.plan_id": [
+      "reviews plan",
+      "review"
+    ],
+    "sessions.mission_id": [
+      "continues mission",
+      "continued in session"
+    ],
+    "sessions.handoff_from_session_id": [
+      "handed off from",
+      "handed off to"
+    ],
+    "sessions.project_id": [
+      "in project",
+      "session"
+    ],
+    "KnowledgeItem.supersedes_id": [
+      "replaces",
+      "replaced by"
+    ],
+    "KnowledgeItem.superseded_by_id": [
+      "replaced by",
+      "replaces"
+    ],
+    "KnowledgeItem.route_decision_id": [
+      "produced by",
+      "produced"
+    ],
+    "knowledge_items.project_id": [
+      "in project",
+      "knowledge"
+    ],
+    "repositories.project_id": [
+      "in project",
+      "repository"
+    ],
+    "automation_runs.automation_id": [
+      "run of automation",
+      "run"
+    ],
+    "automation_runs.mission_id": [
+      "created mission",
+      "created by run"
+    ]
+  }
+}

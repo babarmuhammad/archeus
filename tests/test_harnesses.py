@@ -832,3 +832,26 @@ def test_the_endpoint_answers_per_harness(monkeypatch, tmp_path):
         assert got['efforts'] == list(harnesses.descriptor(hid)['efforts'])
     # an id from a newer version must not blank the form
     assert gui_api.call(gui_api.api_harness_models, {'hid': 'wat'})['hid'] == 'claude'
+
+
+def test_the_launch_modal_keeps_configured_apart_from_the_catalogue(monkeypatch, tmp_path):
+    """C-22: what this pi home can RUN (pi's own --list-models) is its own
+    list, never merged into what pi SHIPS WITH; a failed answer is empty with
+    its reason, never the catalogue in its place."""
+    from harness import Sandbox
+    from claude_sessions import gui_api, pi
+    Sandbox(monkeypatch, tmp_path)
+    monkeypatch.setattr(pi, 'catalogue', lambda home=None: [
+        {'id': 'anthropic/claude-z', 'label': 'Z'}, {'id': 'spark/qwen-x', 'label': 'Q'}])
+    monkeypatch.setattr(pi, 'models', lambda home: ['openai/gpt-y'])
+    monkeypatch.setattr(pi, 'configured', lambda home=None: {
+        'ok': True, 'why': '',
+        'models': [{'id': 'spark/qwen-x', 'provider': 'spark', 'model': 'qwen-x',
+                    'context': 262144}]})
+    got = gui_api.call(gui_api.api_harness_models, {'hid': 'pi'})
+    assert got['configured'] == ['spark/qwen-x'] and got['configured_why'] == ''
+    assert [c['id'] for c in got['cards']] == ['anthropic/claude-z', 'spark/qwen-x']
+    monkeypatch.setattr(pi, 'configured', lambda home=None: {
+        'ok': False, 'models': [], 'why': 'pi --list-models exited 1'})
+    got = gui_api.call(gui_api.api_harness_models, {'hid': 'pi'})
+    assert got['configured'] == [] and 'exited 1' in got['configured_why']

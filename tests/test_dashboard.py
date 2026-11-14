@@ -249,6 +249,24 @@ def test_live_sessions_are_counted_across_every_account(monkeypatch, tmp_path):
     assert sum(live['by_account'].values()) == live['total']
 
 
+def test_a_session_touched_this_instant_is_live_on_a_coarse_clock(monkeypatch, tmp_path):
+    """On Windows `datetime.now()` ticks coarsely and reads up to a tick
+    EARLIER than a `time.time()` taken before it, so a session touched this
+    instant had a negative age and was not live (CI, Windows 3.12)."""
+    import datetime as dt
+    from claude_sessions import config
+    from claude_sessions.stats import assemble_breakdown
+
+    class Coarse(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return dt.datetime.fromtimestamp(time.time() - 0.015, tz)
+    monkeypatch.setattr(dt, 'datetime', Coarse)
+    e = _mk_acct(tmp_path, 'cfg-a', 'alpha', time.time())
+    monkeypatch.setattr(config, 'all_config_dirs', lambda: [('default', e[3])])
+    assert assemble_breakdown([e], days=14)['live']['total'] == 1
+
+
 def test_a_stale_session_is_not_live(monkeypatch, tmp_path):
     """Outside the window it stops counting — the card is supposed to reach
     zero. The bug was that it never left it."""

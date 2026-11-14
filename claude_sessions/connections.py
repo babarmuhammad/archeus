@@ -80,23 +80,29 @@ def _read(f):
 
 def _walk_source_files(root, max_files):
     """Collect source-file paths (pruned, depth/count-capped). Pure — no graph
-    mutation. Returns (abs_paths, truncated)."""
+    mutation. Returns (abs_paths, truncated); a directory that cannot be listed
+    counts as truncated, its subtree is missing."""
     files = []
     truncated = False
     root = os.path.abspath(root)
-    for cur, dirs, names in os.walk(root):
+
+    def unreadable(_err):
+        nonlocal truncated
+        truncated = True
+
+    for cur, dirs, names in os.walk(root, onerror=unreadable):
         depth = _rel(root, cur).count('/') if cur != root else 0
         if depth >= MAX_DEPTH:
             dirs[:] = []
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith('.'))
         for nm in sorted(names):
             ext = os.path.splitext(nm)[1].lower()
-            if ext in SKIP_EXT or ext not in SOURCE_EXT:
+            if nm.lower().endswith(tuple(SKIP_EXT)) or ext not in SOURCE_EXT:
                 continue
-            files.append(os.path.join(cur, nm))
             if len(files) >= max_files:
                 truncated = True
                 break
+            files.append(os.path.join(cur, nm))
         if truncated:
             break
     return files, truncated
@@ -320,13 +326,14 @@ def _cache_path(project_path, proj_folder):
 
 
 def _load_cache(project_path, proj_folder):
-    p = _cache_path(project_path, proj_folder)
-    if p and os.path.isfile(p):
-        try:
-            with open(p, encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            return None
+    for base in (project_path, proj_folder):
+        p = _store.workfile(base, _CACHE_NAME) if base else ''
+        if p and os.path.isfile(p):
+            try:
+                with open(p, encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                return None
     return None
 
 
@@ -336,9 +343,8 @@ def _save_cache(graph, project_path, proj_folder):
             continue
         try:
             d = _store.workdir(base)
-            with open(os.path.join(d, _CACHE_NAME), 'w', encoding='utf-8') as f:
-                json.dump(graph, f)
-            return True
+            if _c.write_json_atomic(os.path.join(d, _CACHE_NAME), graph, indent=None):
+                return True
         except Exception:
             continue
     return False

@@ -118,3 +118,15 @@ def test_get_diff_against_head(tmp_path):
     (repo / 'f.py').write_text('x = 2\n')          # unstaged change
     diff = review.get_diff(str(repo))
     assert '+x = 2' in diff and '-x = 1' in diff
+
+
+@pytest.mark.skipif(not _has_git(), reason='git not installed')
+def test_a_base_that_is_an_option_is_refused_not_passed_to_git(tmp_path):
+    """`base` reaches the command line as `<base>...HEAD`: `--output=<path>`
+    made git create or truncate that file."""
+    repo = tmp_path / 'r'
+    repo.mkdir()
+    subprocess.run(['git', 'init'], cwd=str(repo), capture_output=True)
+    target = tmp_path / 'written_by_git_diff'
+    assert review.get_diff(str(repo), base='--output=%s' % target) == ''
+    assert not [p for p in tmp_path.iterdir() if p.name.startswith('written_by_git_diff')]

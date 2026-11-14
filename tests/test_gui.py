@@ -128,7 +128,7 @@ def test_http_guard_rejects_missing_header(monkeypatch, tmp_path):
 
 @pytest.mark.skipif(os.name != 'nt',
                     reason='asserts the Windows new-console spawn shape '
-                           '(cmd /c title ... &&); POSIX uses a different '
+                           '(direct CreateProcess, new console); POSIX uses a different '
                            'terminal table')
 def test_http_launch_spawns_new_console(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
@@ -144,13 +144,11 @@ def test_http_launch_spawns_new_console(monkeypatch, tmp_path):
         assert code == 200 and d['ok'], d
     finally:
         srv.shutdown()
-    (cmd, kw), = [c for c in calls if c[0][:2] == ['cmd', '/c']]
-    # new-console pattern: cmd /c title "<title with space>" && <claude args>
-    # (no `|| pause` — window must always close when claude exits, any code)
-    assert cmd[2] == 'title'
-    assert ' ' in cmd[3]                     # title must be quoted by list2cmdline
-    assert cmd[4] == '&&'
-    claude_args = cmd[5:]
+    (cmd, kw), = [c for c in calls if '-r' in c[0]]
+    # claude is started directly, never through cmd.exe: a session title or
+    # prompt inside the argv would otherwise be parsed by cmd (`R&D`)
+    assert cmd[0] != 'cmd'
+    claude_args = cmd
     assert ['-r', sid] == claude_args[1:3]
     assert '--effort' in claude_args and 'high' in claude_args
     assert '--model' in claude_args and 'claude-sonnet-5' in claude_args
@@ -161,7 +159,7 @@ def test_http_launch_spawns_new_console(monkeypatch, tmp_path):
 
 @pytest.mark.skipif(os.name != 'nt',
                     reason='asserts the Windows new-console spawn shape '
-                           '(cmd /c title ... &&); POSIX uses a different '
+                           '(direct CreateProcess, new console); POSIX uses a different '
                            'terminal table')
 def test_launch_parity_with_tui_builder(monkeypatch, tmp_path):
     """The argv the GUI hands to the new console must be exactly what the
@@ -177,8 +175,8 @@ def test_launch_parity_with_tui_builder(monkeypatch, tmp_path):
                         lambda cmd, **kw: calls.append((cmd, kw)) or None)
     ok, err = gui.launch_session(actual, enc, f'fork:{sid}', opts)
     assert ok, err
-    (cmd, kw), = [c for c in calls if c[0][:2] == ['cmd', '/c']]
-    assert cmd[5:] == args                      # exact argv parity, no trailing `|| pause`
+    (cmd, kw), = [c for c in calls if '--permission-mode' in c[0]]
+    assert cmd == args                          # exact argv parity, no cmd wrapper
     assert kw['env']['MAX_THINKING_TOKENS'] == '8000'
     assert kw['env']['CLAUDE_CODE_SUBAGENT_MODEL'] == 'claude-haiku-4-5'
     assert env['CLAUDE_CONFIG_DIR'] == kw['env']['CLAUDE_CONFIG_DIR']

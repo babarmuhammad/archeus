@@ -1,0 +1,7 @@
+{
+  "name": "layered-ts",
+  "private": true,
+  "scripts": {"test": "vitest", "build": "tsc -p ."},
+  "dependencies": {"react": "19.3.0"},
+  "devDependencies": {"typescript": "5.9.3", "vitest": "^3.2.0"}
+}

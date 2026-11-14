@@ -29,6 +29,7 @@ established here. See docs/credits.md.
 
 import html as _html
 import os
+from itertools import islice
 
 from .transcripts import iter_json, iso_to_epoch
 
@@ -96,7 +97,7 @@ def _ev(o, t, kind, **kw):
     """
     e = {'o': o, 't': t, 'type': kind}
     for k, v in kw.items():
-        if v not in (None, '', 0):
+        if v not in (None, '') and (v != 0 or k == 'dur'):
             e[k] = v
     return e
 
@@ -465,12 +466,7 @@ def build_events(path, *, harness='claude', limit=None, offset=0):
     what it already has.
     """
     fn = _PARSERS.get(harness) or _claude
-    n = 0
-    for e in fn(path, offset):
-        yield e
-        n += 1
-        if limit is not None and n >= limit:
-            return
+    yield from islice(fn(path, offset), limit)
 
 
 def tail_events(path, offset, *, harness='claude', limit=MAX_EVENTS):

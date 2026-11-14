@@ -394,6 +394,40 @@ TEMPLATES = {
 HOOK_STATE_KEYS = ('hooks', 'hooks_disabled')
 
 
+#: the shape every command below writes: quoted interpreter, quoted script
+_OUR_CMD = re.compile(r'"[^"]+" "([^"]+)"(?: \|\| exit 0)?')
+
+
+_PKG = os.path.dirname(os.path.abspath(__file__))
+
+
+def former_script(path):
+    """Is *path* a script a former installation of this package left behind (a
+    moved checkout or venv): absolute, in a directory named like the package, and
+    gone. A relative path resolves where the hook runs, never here, so its absence
+    says nothing; `migrate._repoint` repairs by this rule too."""
+    return (os.path.isabs(path) and not os.path.exists(path)
+            and os.path.normcase(os.path.basename(os.path.dirname(path)))
+            == os.path.normcase(os.path.basename(_PKG)))
+
+
+def _is_ours(h, script):
+    """Is hook *h* Archeus's *script*: the shape we write, naming this
+    installation's copy or a former one's. `python /company/status_hook.py` is
+    someone else's, and so is a script of the same name anywhere else."""
+    m = _OUR_CMD.fullmatch(str(h.get('command', '')).strip()) if isinstance(h, dict) else None
+    if not m:
+        return False
+    if os.path.exists(m.group(1)):
+        try:
+            return os.path.samefile(m.group(1), os.path.join(_PKG, script))
+        except OSError:
+            return False
+    path = os.path.normcase(os.path.normpath(m.group(1)))
+    return (path == os.path.normcase(os.path.join(_PKG, script))
+            or (os.path.basename(path) == os.path.normcase(script) and former_script(m.group(1))))
+
+
 def _memory_hook_command():
     import sys
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'recall_hook.py')
@@ -411,7 +445,7 @@ def install_memory_hook(cfgdir=None):
     cmd = _memory_hook_command()
     for entry in entries:
         for h in (entry.get('hooks') or []):
-            if 'recall_hook.py' in str(h.get('command', '')):
+            if _is_ours(h, 'recall_hook.py'):
                 if h.get('command') != cmd:      # stale python/repo path → repair
                     h['command'] = cmd
                     h['timeout'] = 5
@@ -430,7 +464,7 @@ def uninstall_memory_hook(cfgdir=None):
     changed = False
     for entry in list(entries):
         hs = entry.get('hooks') or []
-        kept = [h for h in hs if 'recall_hook.py' not in str(h.get('command', ''))]
+        kept = [h for h in hs if not _is_ours(h, 'recall_hook.py')]
         if len(kept) != len(hs):
             changed = True
             if kept:
@@ -444,7 +478,7 @@ def uninstall_memory_hook(cfgdir=None):
 
 def memory_hook_installed(cfgdir=None):
     entries = (_load(cfgdir).get('hooks') or {}).get('UserPromptSubmit') or []
-    return any('recall_hook.py' in str(h.get('command', ''))
+    return any(_is_ours(h, 'recall_hook.py')
                for e in entries if isinstance(e, dict)
                for h in (e.get('hooks') or []))
 
@@ -478,7 +512,7 @@ def install_worklog_hook(cfgdir=None):
         found = False
         for entry in entries:
             for h in (entry.get('hooks') or []):
-                if 'worklog_hook.py' in str(h.get('command', '')):
+                if _is_ours(h, 'worklog_hook.py'):
                     found = True
                     if h.get('command') != cmd:
                         h['command'] = cmd
@@ -499,7 +533,7 @@ def uninstall_worklog_hook(cfgdir=None):
             continue
         for entry in list(entries):
             hs = entry.get('hooks') or []
-            kept = [h for h in hs if 'worklog_hook.py' not in str(h.get('command', ''))]
+            kept = [h for h in hs if not _is_ours(h, 'worklog_hook.py')]
             if len(kept) != len(hs):
                 changed = True
                 if kept:
@@ -515,10 +549,99 @@ def worklog_hook_installed(cfgdir=None):
     hooks = _load(cfgdir).get('hooks') or {}
     for event in _WORKLOG_EVENTS:
         for e in hooks.get(event) or []:
-            if isinstance(e, dict) and any('worklog_hook.py' in str(h.get('command', ''))
+            if isinstance(e, dict) and any(_is_ours(h, 'worklog_hook.py')
                                            for h in (e.get('hooks') or [])):
                 return True
     return False
+
+
+# ── session status: working / needs input / idle ─────────────
+#
+# Opt-in from the hooks menu, never installed on its own. It writes to the same
+# user-level settings.json the other hooks here do and nowhere else; the hook
+# script touches no credentials, only a per-session state file.
+_STATUS_EVENTS = ('UserPromptSubmit', 'Notification', 'Stop', 'SessionEnd')
+
+
+def _status_hook_command():
+    import sys
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'status_hook.py')
+    # a moved or deleted checkout makes python exit 2, which blocks the prompt or the stop
+    return f'"{sys.executable}" "{script}" || exit 0'
+
+
+def _is_status(h):
+    return _is_ours(h, 'status_hook.py')
+
+
+def _status_hooks(s, event):
+    """Our hook dicts for *event*, enabled or disabled, skipping foreign junk."""
+    for key in HOOK_STATE_KEYS:
+        block = s.get(key)
+        entries = block.get(event) if isinstance(block, dict) else None
+        for e in entries if isinstance(entries, list) else []:
+            hs = e.get('hooks') if isinstance(e, dict) else None
+            for h in hs if isinstance(hs, list) else []:
+                if isinstance(h, dict) and _is_status(h):
+                    yield h
+
+
+def install_status_hook(cfgdir=None):
+    """Idempotently install (or repair) the status hook on its events. A disabled
+    copy counts as installed. False when settings.json has a shape it cannot add to."""
+    s = _load(cfgdir)
+    hooks = s.setdefault('hooks', {})
+    if not isinstance(hooks, dict):
+        return False
+    cmd = _status_hook_command()
+    changed = False
+    for event in _STATUS_EVENTS:
+        ours = list(_status_hooks(s, event))
+        for h in ours:
+            if h.get('command') != cmd:
+                h['command'] = cmd
+                changed = True
+        if not ours:
+            entries = hooks.setdefault(event, [])
+            if not isinstance(entries, list):
+                return False
+            entries.append({'hooks': [{'type': 'command', 'command': cmd, 'timeout': 5}]})
+            changed = True
+    return _save(s, cfgdir) if changed else True
+
+
+def uninstall_status_hook(cfgdir=None):
+    """Remove only our entries, enabled or disabled; a foreign hook sharing an entry stays."""
+    s = _load(cfgdir)
+    changed = False
+    for key in HOOK_STATE_KEYS:
+        block = s.get(key)
+        if not isinstance(block, dict):
+            continue
+        for event in _STATUS_EVENTS:
+            entries = block.get(event)
+            if not isinstance(entries, list):
+                continue
+            touched = False
+            for entry in list(entries):
+                hs = entry.get('hooks') if isinstance(entry, dict) else None
+                if not isinstance(hs, list):
+                    continue
+                kept = [h for h in hs if not (isinstance(h, dict) and _is_status(h))]
+                if len(kept) != len(hs):
+                    changed = touched = True
+                    if kept:
+                        entry['hooks'] = kept
+                    else:
+                        entries.remove(entry)
+            if touched and not entries:
+                block.pop(event)
+    return _save(s, cfgdir) if changed else True
+
+
+def status_hook_installed(cfgdir=None):
+    s = _load(cfgdir)
+    return all(any(True for _ in _status_hooks(s, event)) for event in _STATUS_EVENTS)
 
 
 # ── account rotation: StopFailure on a rate limit ────────────
@@ -547,7 +670,7 @@ def install_limit_hook(cfgdir=None):
     cmd = _limit_hook_command()
     for entry in entries:
         for h in (entry.get('hooks') or []):
-            if 'limit_hook.py' in str(h.get('command', '')):
+            if _is_ours(h, 'limit_hook.py'):
                 # a stale interpreter or checkout path is a repair, not a second
                 # entry — the same rule `install_memory_hook` follows, and the
                 # matcher is repaired with it so a hand-edit cannot silence the
@@ -574,7 +697,7 @@ def uninstall_limit_hook(cfgdir=None):
     changed = False
     for entry in list(entries):
         hs = entry.get('hooks') or []
-        kept = [h for h in hs if 'limit_hook.py' not in str(h.get('command', ''))]
+        kept = [h for h in hs if not _is_ours(h, 'limit_hook.py')]
         if len(kept) != len(hs):
             changed = True
             if kept:
@@ -588,7 +711,7 @@ def uninstall_limit_hook(cfgdir=None):
 
 def limit_hook_installed(cfgdir=None):
     entries = (_load(cfgdir).get('hooks') or {}).get('StopFailure') or []
-    return any('limit_hook.py' in str(h.get('command', ''))
+    return any(_is_ours(h, 'limit_hook.py')
                for e in entries if isinstance(e, dict)
                for h in (e.get('hooks') or []))
 
@@ -662,6 +785,7 @@ _SCRIPT_LABELS = {
     'agentnudge_hook.py': 'suggest-subagent',
     'memdirty_hook.py': 'memory stale-on-edit',
     'limit_hook.py': 'account rotation on limit',
+    'status_hook.py': 'session status',
 }
 
 
@@ -859,7 +983,9 @@ def hooks_menu(scope=None, cfgdir=None):
                   ('✍  Write one yourself', '__new__'),
                   ('✨  AI-generate a hook (Claude)', '__ai__'),
                   ('🧹  Remove broken/legacy hooks', '__purge__'),
-                  ('📝  Edit settings.json', '__edit__')]
+                  ('📝  Edit settings.json', '__edit__'),
+                  (f"{'■' if status_hook_installed(cfgdir) else '□'}  Session status in the list "
+                   f"(working / needs input / idle)", '__status__')]
         if len(account_dirs()) > 1:
             items.append(('👤  Show another account', '__acct__'))
 
@@ -876,6 +1002,11 @@ def hooks_menu(scope=None, cfgdir=None):
             pick = menu([(n, d) for n, d in account_dirs()], "SHOW ACCOUNT")
             if pick:
                 cfgdir = pick
+        elif sel == '__status__':
+            on = status_hook_installed(cfgdir)
+            ok = (uninstall_status_hook if on else install_status_hook)(cfgdir)
+            flash(f"Session status {'removed' if on else 'installed'}" if ok else "Write failed",
+                  ok=ok, secs=1.4)
         elif sel == '__tpl__':
             _add_template(cfgdir)
         elif sel == '__new__':
@@ -1062,7 +1193,7 @@ def _move_across(event, index, src_key, dst_key, cfgdir=None):
     ref = _load(cfgdir)
     entries = (ref.get(src_key) or {}).get(event) or []
     idx = int(index)
-    if not isinstance(entries, list) or idx >= len(entries):
+    if not isinstance(entries, list) or not 0 <= idx < len(entries):
         return False
     if cfgdir:
         if _move(ref, event, idx, src_key, dst_key) is None:
@@ -1162,8 +1293,8 @@ def _toggle_or_remove(sel, cfgdir=None):
     if act not in ('toggle', 'label', 'remove'):
         return
     if act == 'toggle':
-        flash("Toggled" if set_hook_enabled(event, idx, state == 'off', cfgdir)
-              else "Write failed")
+        ok = set_hook_enabled(event, idx, state == 'off', cfgdir)
+        flash("Toggled" if ok else "Write failed", ok=ok)
         return
     if act == 'label':
         d = _load(cfgdir)
@@ -1176,12 +1307,16 @@ def _toggle_or_remove(sel, cfgdir=None):
         cur = label_of(event, cmds)
         name = text_input("Name:", default=cur.get('name')
                           or _hook_label(entry, event))
+        if name is None:
+            return
         cat = text_input("Category:", default=cur.get('cat')
                          or category_of(entry, event))
-        set_label(event, cmds, name=name or '', cat=cat or '')
+        if cat is None:
+            return
+        set_label(event, cmds, name=name, cat=cat)
         flash("Saved", secs=1.2)
         return
     if not confirm("Remove this hook?", danger=True):
         return
-    flash("Hook removed" if remove_hook(event, idx, state == 'on', cfgdir)
-          else "Write failed")
+    ok = remove_hook(event, idx, state == 'on', cfgdir)
+    flash("Hook removed" if ok else "Write failed", ok=ok)

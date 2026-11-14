@@ -16,6 +16,7 @@ import re
 import subprocess
 
 from . import config as _c
+from . import llmcall as _llmcall
 from . import store
 
 PLAN_FILE = os.path.join(store.WORKDIR, 'plan-latest.md')
@@ -49,6 +50,8 @@ def check_endpoint(base, label='OmniRoute/failover endpoint'):
         return
     import urllib.request
     import urllib.error
+    from . import netsafe
+    netsafe.install()
     try:
         urllib.request.urlopen(base + '/v1/models', timeout=5)
     except urllib.error.HTTPError:
@@ -59,13 +62,12 @@ def check_endpoint(base, label='OmniRoute/failover endpoint'):
 
 def plan_store_path():
     """Return path for plan persistence (JSON), stored near the settings file."""
-    return os.path.join(os.path.expanduser('~'), '.claude', 'last_plan.json')
+    return os.path.join(_c._USERPROFILE, '.claude', 'last_plan.json')
 
 
 def save_plan(plan_text, path):
     """Write plan text and metadata to path as JSON."""
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump({'plan_text': plan_text, 'generated_at': None}, f, indent=2)
+    _c.write_atomic(path, json.dumps({'plan_text': plan_text, 'generated_at': None}, indent=2))
 
 
 def load_plan(path):
@@ -203,7 +205,7 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
         "plan as markdown.\n\n" + WEAK_MODEL_PLAN_INSTRUCTIONS +
         "\n\nTASK:\n" + task
     )
-    args = [exe, '-p', '--disallowedTools', 'Write,Edit,NotebookEdit,Bash']
+    args = [exe, '-p', '--disallowedTools', _llmcall.DISALLOWED_TOOLS]
     if plan_model:
         args += ['--model', plan_model]
     if effort:
@@ -225,8 +227,7 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
         f'Planning with {plan_model}...', timeout=_plan_timeout(), cwd=cwd, env=env)
     result = (out or '').strip()
     if result:
-        try: save_plan(result, plan_store_path())
-        except OSError: pass
+        save_plan(result, plan_store_path())
     return result
 
 
@@ -255,7 +256,7 @@ def _headless(model, prompt, cwd, prov_env=None, cfgdir='', prof=None):
     exe = get_claude_exe()
     if not exe:
         return ''
-    args = [exe, '-p', '--disallowedTools', 'Write,Edit,NotebookEdit,Bash']
+    args = [exe, '-p', '--disallowedTools', _llmcall.DISALLOWED_TOOLS]
     if model:
         args += ['--model', model]
     # a council is N extra calls per plan — exactly where an uncapped spend adds up
@@ -644,13 +645,17 @@ def run(project_path, proj_folder, project_name, plan=None, per_step=False, shou
             _pv_env, warn = omniroute.prepare_launch(
                 exec_model, prof, ctx_bytes=context_bytes(project_path, plan))
         except (RuntimeError, ValueError) as e:
-            flash(str(e), ok=False, secs=3)
+            flash(f"Cannot prepare the launch: {e}", ok=False, secs=3)
             return False
         prov_env.update(_pv_env)
         if warn:
             flash(warn, ok=False, secs=3)
 
-    args, env = build_exec_launch(project_path, proj_folder, task, exec_model, prov_env, cfgdir)
+    try:
+        args, env = build_exec_launch(project_path, proj_folder, task, exec_model, prov_env, cfgdir)
+    except OSError as e:
+        flash(f"Cannot prepare the launch: {e}", ok=False, secs=3)
+        return False
     if not args:
         flash("claude.exe not found", ok=False, secs=1.8)
         return False

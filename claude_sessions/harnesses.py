@@ -352,8 +352,8 @@ HARNESSES = {
         'has_project': 'pi.has_project',
         'launch_argv': 'pi.launch_argv',
         #: archeus's OWN one-shot calls (memory, lessons, generation). Only a
-        #: harness that names one can run them; Claude Code's is built inline
-        #: in `memory._claude_stdin`. ponytail: Codex has none yet — `codex
+        #: harness that names one can run them; Claude Code's is built in
+        #: `llmcall.build_headless_args`. ponytail: Codex has none yet — `codex
         #: exec` logs progress on stderr, which the runner merges into the
         #: answer; add it with `--output-last-message` when a Codex user asks.
         'headless_argv': 'pi.headless_argv',
@@ -364,6 +364,8 @@ HARNESSES = {
         'efforts': ('', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'),
         'models': 'pi.models',
         'catalogue': 'pi.catalogue',
+        #: what ONE home can run, pi's own `--list-models` (C-22) — never the catalogue
+        'configured': 'pi.configured',
         'doctor': 'pi.doctor',
         #: no login subcommand; `pi` prompts on first use and writes auth.json
         'login_argv': (),
@@ -725,7 +727,7 @@ def exe(hid=None):
     that changes on every update, so a stored absolute path goes stale in
     silence."""
     import glob as _glob
-    import shutil
+    from . import proc as _proc
     d = descriptor(hid)
     override = (_c.load_settings().get(d.get('exe_setting') or '') or '')
     if override and os.path.exists(override):
@@ -741,7 +743,7 @@ def exe(hid=None):
             # `codex update` just wrote.
             return max(found, key=os.path.getmtime)
     for name in d['exe_names']:
-        found = shutil.which(name)
+        found = _proc.which(name)
         if found:
             return found
     return None
@@ -803,10 +805,13 @@ def of_argv(args):
         first = str(args[0] or '').replace('\\', '/').rsplit('/', 1)[-1].lower()
     except (IndexError, TypeError, KeyError):
         return None
+    # the spellings proc.which can return for a name: bare, or a PATHEXT suffix
+    stem, ext = os.path.splitext(first)
+    if ext not in ('', '.com', '.exe', '.bat', '.cmd', '.ps1'):
+        return None
     for hid in ids():
         d = HARNESSES[hid]
-        if any(first == n.lower() or first == os.path.splitext(n)[0].lower()
-               for n in d['exe_names']):
+        if any(stem == os.path.splitext(n)[0].lower() for n in d['exe_names']):
             return d
     return None
 

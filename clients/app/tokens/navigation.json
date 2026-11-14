@@ -1,0 +1,194 @@
+{
+  "$comment": "THE navigation table (p16-design-gate §4.2, p17-design-gate §3, A1): one flat declaration. The SPA's sidebar, rail, phone tab bar, shortcuts and command bar, and the TUI's screens and keys, all read it through tools/gen_ui.py (src/nav/table.ts, archeus/cli/tui/_tables.py). `key` is the SPA shortcut and `mod` its modifier: `alt` is Alt (Option on macOS) alone, matched by the physical key and never in a text field, with no Alt+digit on Linux, where the browser's tabs own it (Q-A5, rulebook §46.3; the user, 2026-10-04); `ctrl` is Ctrl alone on every platform, never Cmd, because Cmd+, is the browser's own Settings on macOS (p19-design-gate §12 item 111); `tui` is the TUI key (ui-architecture §3). A tab's `key` is its TUI key inside an inspector; it is unique within each kind. There is no Thread tab: P16 never built one (p16-design-gate §30 deviation 10).",
+  "destinations": [
+    {
+      "id": "now",
+      "mod": "alt",
+      "label": "Now",
+      "key": "1",
+      "tui": "1",
+      "phone": "tab",
+      "blurb": "What changed, what is happening, and the conversation"
+    },
+    {
+      "id": "work",
+      "mod": "alt",
+      "label": "Work",
+      "key": "2",
+      "tui": "2",
+      "phone": "tab",
+      "blurb": "Every mission, grouped by what it waits on"
+    },
+    {
+      "id": "world",
+      "mod": "alt",
+      "label": "World",
+      "key": "3",
+      "tui": "3",
+      "phone": "tab",
+      "blurb": "Projects, repositories and what Archeus knows"
+    },
+    {
+      "id": "attention",
+      "mod": "alt",
+      "label": "Attention",
+      "key": "j",
+      "tui": "a",
+      "phone": "tab",
+      "blurb": "Everything that waits on you"
+    },
+    {
+      "id": "control",
+      "mod": "ctrl",
+      "label": "Control",
+      "key": ",",
+      "tui": "4",
+      "phone": "menu",
+      "blurb": "Autonomy, automations, resources, sessions and clients"
+    }
+  ],
+  "control_sections": [
+    {
+      "id": "autonomy",
+      "label": "Autonomy"
+    },
+    {
+      "id": "automations",
+      "label": "Automations"
+    },
+    {
+      "id": "resources",
+      "label": "Resources"
+    },
+    {
+      "id": "sessions",
+      "label": "Sessions"
+    },
+    {
+      "id": "devices",
+      "label": "Clients"
+    },
+    {
+      "id": "appearance",
+      "label": "Appearance"
+    },
+    {
+      "id": "about",
+      "label": "About"
+    }
+  ],
+  "inspector_tabs": {
+    "mission": [
+      "outcome",
+      "plan",
+      "now",
+      "evidence",
+      "why",
+      "timeline",
+      "trace",
+      "relations"
+    ],
+    "execution": [
+      "output",
+      "checkpoints",
+      "relations"
+    ],
+    "session": [
+      "brief",
+      "lineage",
+      "relations"
+    ],
+    "knowledge_item": [
+      "detail",
+      "relations"
+    ],
+    "automation_run": [
+      "explanation",
+      "relations"
+    ],
+    "approval": [
+      "detail"
+    ],
+    "plan": [
+      "detail",
+      "relations"
+    ],
+    "verification": [
+      "detail",
+      "relations"
+    ],
+    "route_decision": [
+      "detail"
+    ],
+    "policy_decision": [
+      "detail"
+    ],
+    "context_package": [
+      "detail"
+    ],
+    "project": [
+      "detail"
+    ],
+    "repository": [
+      "detail"
+    ]
+  },
+  "tabs": {
+    "outcome": {
+      "label": "Outcome",
+      "key": "o"
+    },
+    "plan": {
+      "label": "Plan",
+      "key": "p"
+    },
+    "now": {
+      "label": "Now",
+      "key": "n"
+    },
+    "evidence": {
+      "label": "Evidence",
+      "key": "e"
+    },
+    "why": {
+      "label": "Why",
+      "key": "w"
+    },
+    "timeline": {
+      "label": "Timeline",
+      "key": "t"
+    },
+    "trace": {
+      "label": "Trace",
+      "key": "c"
+    },
+    "relations": {
+      "label": "Relations",
+      "key": "r"
+    },
+    "output": {
+      "label": "Output",
+      "key": "o"
+    },
+    "checkpoints": {
+      "label": "Checkpoints",
+      "key": "c"
+    },
+    "brief": {
+      "label": "Brief",
+      "key": "b"
+    },
+    "lineage": {
+      "label": "Lineage",
+      "key": "l"
+    },
+    "detail": {
+      "label": "Detail",
+      "key": "d"
+    },
+    "explanation": {
+      "label": "Explanation",
+      "key": "e"
+    }
+  }
+}

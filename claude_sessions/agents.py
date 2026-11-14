@@ -13,6 +13,7 @@ from .ui import (menu, text_input, flash, pause, confirm, multiselect,
                  pager, _cls)
 from . import config as _c
 from . import render
+from . import skillscan
 
 # Tools a subagent can be granted (Claude Code built-ins). '' frontmatter
 # (omit the field) inherits all tools.
@@ -54,8 +55,10 @@ def parse_agent(path):
 def write_agent(path, meta, body):
     """Write an agent .md with frontmatter. Returns True on success."""
     order = ['name', 'description', 'tools', 'model']
-    keys = order + [k for k in meta if k not in order]
-    fm = '\n'.join(f"{k}: {meta[k]}" for k in keys if meta.get(k))
+    keys = order + [k for k in meta if k not in order
+                    and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', k)]
+    fm = '\n'.join(f"{k}: {' '.join(str(meta[k]).splitlines())}"
+                   for k in keys if meta.get(k))
     out = f"---\n{fm}\n---\n\n{body.rstrip()}\n"
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -256,6 +259,10 @@ def build_ai_prompt(name, role, project_path=None):
     )
 
 
+def lint_warnings(md):
+    return [f'{f.rule} (line {f.line})' for f in skillscan.lint(md[:skillscan._MAX_BYTES])]
+
+
 def write_agent_raw(md, name, scope='user', project_path=None, category=''):
     """Write generated agent markdown where Claude Code actually reads it.
 
@@ -265,11 +272,14 @@ def write_agent_raw(md, name, scope='user', project_path=None, category=''):
     subfolder per category would hide every agent inside it. The category rides
     in the frontmatter instead.
 
-    Returns {'ok', 'path', 'name', 'error'}.
+    Returns {'ok', 'path', 'name', 'error', 'warnings'}; `warnings` are advisory
+    skillscan.lint findings and never stop the write.
     """
     md = (md or '').strip()
     if not md:
-        return {'ok': False, 'error': 'nothing to write', 'path': '', 'name': name}
+        return {'ok': False, 'error': 'nothing to write', 'path': '', 'name': name,
+                'warnings': []}
+    warnings = lint_warnings(md)
     d = (project_agents_dir(project_path) if scope == 'project' and project_path
          else user_agents_dir())
     path = os.path.join(d, f'{_slug(name)}.md')
@@ -277,15 +287,19 @@ def write_agent_raw(md, name, scope='user', project_path=None, category=''):
         meta, body = _parse_md(md)
         meta.setdefault('category', category.strip())
         if write_agent(path, meta, body):
-            return {'ok': True, 'path': path, 'name': name, 'error': ''}
-        return {'ok': False, 'error': 'write failed', 'path': path, 'name': name}
+            return {'ok': True, 'path': path, 'name': name, 'error': '',
+                    'warnings': warnings}
+        return {'ok': False, 'error': 'write failed', 'path': path, 'name': name,
+                'warnings': warnings}
     try:
         os.makedirs(d, exist_ok=True)
         with open(path, 'w', encoding='utf-8') as f:
             f.write(md if md.endswith('\n') else md + '\n')
-        return {'ok': True, 'path': path, 'name': name, 'error': ''}
+        return {'ok': True, 'path': path, 'name': name, 'error': '',
+                'warnings': warnings}
     except Exception as e:
-        return {'ok': False, 'error': str(e), 'path': path, 'name': name}
+        return {'ok': False, 'error': str(e), 'path': path, 'name': name,
+                'warnings': warnings}
 
 
 def _parse_md(text):
@@ -352,7 +366,10 @@ def _new_agent_ai(project_path):
     content = (md or '').strip()
     if not content:
         flash(memory.why_failed(), ok=False, secs=2.4); return
-    if not _pager_confirm(f"AGENT  /  {name}  — approve to write", content):
+    warnings = lint_warnings(content)
+    title = f"AGENT  /  {name}" + (f"  — {len(warnings)} lint finding(s)" if warnings else '')
+    shown = '\n'.join(['LINT (advisory):'] + warnings + ['', content]) if warnings else content
+    if not _pager_confirm(f"{title}  — approve to write", shown):
         _cls(); print("\n  Rejected — not written.\n"); pause("  Press Enter..."); return
     r = write_agent_raw(content, name, scope, project_path, category)
     if r['ok']:
@@ -375,7 +392,7 @@ def view_agent_file(path):
         return
     w = render.content_width()
     lines = []
-    for raw in text.replace('\t', '    ').split('\n'):
+    for raw in skillscan._inert(text.replace('\t', '    ')).split('\n'):
         if not raw:
             lines.append('')
             continue
@@ -569,6 +586,13 @@ def write_agents_json_tempfile(refs):
 _MANIFEST = '.archeus-managed.json'
 
 
+def _managed_name(fn):
+    """A manifest entry is a bare agent file name. The manifest sits in the
+    project, so its entries are data a repository can forge."""
+    return (isinstance(fn, str) and fn.endswith('.md') and fn not in ('.', '..')
+            and not any(c in fn for c in '/\\:') and fn == os.path.basename(fn))
+
+
 def sync_project_agents(project_path, refs, routed=None):
     """Make <project>/.claude/agents/ contain exactly the selected library
     agents. Claude auto-discovers them at launch — no command-line size limit.
@@ -609,14 +633,37 @@ def sync_project_agents(project_path, refs, routed=None):
         src = find_library_agent(ref)
         if src:
             desired[os.path.basename(src)] = src
+    # a name on disk that the previous manifest does not list is the user's own file
+    managed = {fn for fn in prev if _managed_name(fn)}
+    for fn in list(desired):
+        if fn not in managed and os.path.lexists(os.path.join(dest, fn)):
+            del desired[fn]
 
     if not desired and not prev:
         return 0
     os.makedirs(dest, exist_ok=True)
 
+    def _record(names):
+        if names:
+            return _c.write_json_atomic(manifest_path, names, indent=None)
+        if os.path.isfile(manifest_path):
+            os.remove(manifest_path)
+        return True
+
+    # The record goes down first, and it is refused as a whole: a refused record
+    # changes nothing on disk. No file is removed or copied that no manifest names.
+    # Previously managed names stay in it until their file is confirmed gone.
+    first = list(desired) + sorted(managed - set(desired))
+    try:
+        recorded = _record(first)
+    except Exception:
+        recorded = False
+    if not recorded:
+        return 0
+
     # remove managed files no longer selected
     for fn in prev:
-        if fn not in desired:
+        if _managed_name(fn) and fn not in desired:
             fp = os.path.join(dest, fn)
             if os.path.isfile(fp):
                 try:
@@ -628,7 +675,11 @@ def sync_project_agents(project_path, refs, routed=None):
     # so agents inherit CLAUDE_CODE_SUBAGENT_MODEL instead of trying to
     # call a bare Anthropic model id through the OmniRoute proxy)
     written = []
+    collided = set()
     for fn, src in desired.items():
+        # a name not yet managed is created exclusively, so a user file that
+        # appeared after the check above wins; a managed name is overwritten
+        new = fn not in managed
         try:
             dest_path = os.path.join(dest, fn)
             if routed:
@@ -642,22 +693,29 @@ def sync_project_agents(project_path, refs, routed=None):
                         fm_lines = [l for l in fm.splitlines()
                                     if not l.strip().startswith('model:')]
                         content = '---' + '\n'.join(fm_lines) + '\n---' + body
-                with open(dest_path, 'w', encoding='utf-8') as f:
+                with open(dest_path, 'x' if new else 'w', encoding='utf-8') as f:
                     f.write(content)
             else:
-                shutil.copyfile(src, dest_path)
+                # reserve the name first; copyfile then fills our own empty file
+                if new:
+                    open(dest_path, 'xb').close()
+                try:
+                    shutil.copyfile(src, dest_path)
+                except Exception:
+                    if new:
+                        os.remove(dest_path)
+                    raise
             written.append(fn)
+        except FileExistsError:
+            collided.add(fn)
         except Exception:
             pass
-
-    try:
-        if written:
-            with open(manifest_path, 'w', encoding='utf-8') as f:
-                json.dump(written, f)
-        elif os.path.isfile(manifest_path):
-            os.remove(manifest_path)
-    except Exception:
-        pass
+    kept = [fn for fn in first if fn not in collided and os.path.lexists(os.path.join(dest, fn))]
+    if kept != first:
+        try:
+            _record(kept)
+        except Exception:
+            pass
     # Installing an agent is only half of getting it used — see the note above
     # write_routing_block. Refreshed here so the table can never describe a
     # selection that is no longer on disk.

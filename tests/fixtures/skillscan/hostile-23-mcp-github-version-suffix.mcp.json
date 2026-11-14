@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sample": {
+      "command": "npx",
+      "args": ["github:owner/repo#release@1.2.3"]
+    }
+  }
+}

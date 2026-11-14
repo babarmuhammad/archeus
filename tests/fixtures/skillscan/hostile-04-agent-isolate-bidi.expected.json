@@ -1,0 +1,13 @@
+{
+  "fixture": "hostile-04-agent-isolate-bidi.md",
+  "kind": "agent",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "bidi-control",
+      "line": 7,
+      "match": "U+2066"
+    }
+  ],
+  "note": "U+2066 ... U+2069 isolate a word in the agent prompt; the finding names the first bidi control."
+}

@@ -18,14 +18,24 @@ def _default_dir():
     return os.path.join(_c._USERPROFILE, '.claude')
 
 
+def same_account_dir(d, active):
+    """Is account dir *d* the active setting, compared by normalised path.
+
+    An empty side never matches: normpath('') is '.', a real directory.
+    """
+    if not (d and active):
+        return False
+    return (os.path.normcase(os.path.normpath(_resolved(d)))
+            == os.path.normcase(os.path.normpath(_resolved(active))))
+
+
 def _accounts(s):
     """[(name, dir, is_active)] — always includes the built-in default account."""
     active = s.get('claude_config_dir', '') or ''
     out = [('default', '', not active)]                  # '' dir = ~/.claude
     for a in s.get('accounts', []):
         if isinstance(a, dict) and a.get('dir'):
-            out.append((a.get('name', a['dir']), a['dir'],
-                        os.path.expanduser(a['dir']) == os.path.expanduser(active)))
+            out.append((a.get('name', a['dir']), a['dir'], same_account_dir(a['dir'], active)))
     return out
 
 
@@ -287,6 +297,9 @@ def _account_actions(s, name, hid=None, built_in=''):
     acts.append(('Cancel', 'cancel'))
     act = menu(acts, f"LOGIN  /  {name}")
     if act == 'switch':
+        if not d and name != 'default':
+            flash(f"No login named '{name}'", ok=False, secs=1.8)
+            return
         s['claude_config_dir'] = d
         save_settings(s)
         flash(f"Active account → {name}. Restart archeus to fully apply.", secs=2)
@@ -318,7 +331,7 @@ def _account_actions(s, name, hid=None, built_in=''):
     elif act == 'remove':
         if claude:
             s['accounts'] = [a for a in s.get('accounts', []) if a.get('name') != name]
-            if os.path.expanduser(s.get('claude_config_dir', '')) == os.path.expanduser(d):
+            if same_account_dir(d, s.get('claude_config_dir', '')):
                 s['claude_config_dir'] = ''
         else:
             homes = dict(s.get('homes') or {})

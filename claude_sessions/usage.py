@@ -7,6 +7,7 @@ on a background thread; absent/expired credentials degrade to no line.
 
 import os
 import json
+import math
 import time
 import threading
 import urllib.request
@@ -14,6 +15,9 @@ import urllib.error
 from datetime import datetime, timezone
 
 from . import config as _c
+from . import netsafe
+
+netsafe.install()
 
 USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 
@@ -93,8 +97,9 @@ def _spend_of(data):
     if not sp.get('enabled'):
         return None
     used = sp.get('used') or {}
+    exp = used.get('exponent')
     try:
-        amount = (used.get('amount_minor') or 0) / (10 ** (used.get('exponent') or 2))
+        amount = (used.get('amount_minor') or 0) / (10 ** (2 if exp is None else exp))
     except (TypeError, ValueError):
         amount = 0.0
     return {'used': round(amount, 2), 'pct': sp.get('percent') or 0,
@@ -238,6 +243,27 @@ def refresh_now():
         _poll_account(name, d, active)
 
 
+def windows_snapshot(cfgdir=None, *, poll=False):
+    """(windows, observed_at, status) for one account, from the poller's cache:
+    `windows` is [(label, pct, resets_at)] as `_extract_windows` reads them,
+    `observed_at` the epoch of the last good fetch (None: never), `status` the
+    poller's last answer ('unknown' before it polled this account). Unlike
+    `quota.worst_window`, nothing unknown is reported as 0%: the V1 router
+    must tell an empty window from one nobody read (archeus P10 seam).
+    `poll=True` starts the background poller if it is not running yet."""
+    if poll:
+        _ensure_started()
+    want = os.path.normcase(os.path.abspath(cfgdir or _c.config_dir))
+    with _lock:
+        st = next((dict(v) for k, v in _acct_state.items()
+                   if os.path.normcase(os.path.abspath(k)) == want), None)
+    if not st:
+        return [], None, 'unknown'
+    data = st.get('data')
+    return (_extract_windows(data) if data else []), st.get('fetched_at'), \
+        st.get('status') or 'unknown'
+
+
 def _fmt_reset(iso):
     """ISO timestamp → short local time ('14:30' today, else 'Tue 09:00')."""
     try:
@@ -295,9 +321,10 @@ def _extract_windows(data):
 
     def norm(v):
         try:
-            return max(0.0, min(float(v), 100.0))
+            f = float(v)
         except (TypeError, ValueError):
             return None
+        return None if math.isnan(f) else max(0.0, min(f, 100.0))
 
     out = []
     # Prefer the authoritative `limits` array (explicit percent + group).

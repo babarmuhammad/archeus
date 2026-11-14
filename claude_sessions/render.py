@@ -25,6 +25,28 @@ def strip_ansi(s):
     return _ANSI_RE.sub('', s)
 
 
+# every escape and control sequence a terminal acts on, 7-bit and 8-bit
+_SEQ = re.compile(r'''
+    \x1b\[[0-?]*[ -/]*[@-~]                 # CSI (cursor, erase, SGR, modes)
+  | \x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?      # OSC (title, clipboard, hyperlinks)
+  | \x1b[PX^_][^\x1b]*(?:\x1b\\)?           # DCS, SOS, PM, APC
+  | \x1b[ -/]*[0-~]?                        # every other escape, and a bare ESC
+  | \x9b[0-?]*[ -/]*[@-~]                   # 8-bit CSI
+  | [\x90\x98\x9d\x9e\x9f][^\x07\x9c]*(?:\x07|\x9c)?   # 8-bit DCS/SOS/OSC/PM/APC
+''', re.X)
+_BREAK = re.compile('[\r\n  \x0b\x0c\x85]+')
+# the rest of C0 and C1, DEL, and the bidirectional marks and overrides that reorder text
+_CTRL = re.compile('[\x00-\x1f\x7f-\x9f؜‎‏‪-‮⁦-⁩￹-￻]')
+
+
+def clean(s):
+    """*s* as one line of inert text: no escape sequence, no control character,
+    no line break (a break becomes a space), tabs as spaces."""
+    s = _SEQ.sub('', '' if s is None else str(s))
+    s = _BREAK.sub(' ', s.replace('\t', '    '))
+    return _CTRL.sub('', s)
+
+
 def _char_width(ch):
     """Display columns for one character: combining 0, wide/fullwidth 2, else 1."""
     if unicodedata.combining(ch):
@@ -40,6 +62,8 @@ def disp_width(s):
 def trunc(s, width):
     """Truncate to display width, appending '…' if cut. ANSI-safe:
     escape codes are preserved and never split; C_RESET appended if any code present."""
+    if width <= 0:
+        return ''
     if disp_width(s) <= width:
         return s
     out = []
