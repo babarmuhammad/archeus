@@ -350,6 +350,14 @@ def hits_pending(project_path, proj_folder):
         return 0
 
 
+def _hit_line(name):
+    return re.sub(r'[\\\r\n]', lambda m: {'\\': '\\\\', '\r': '\\r', '\n': '\\n'}[m.group()], name)
+
+
+def _hit_name(line):
+    return re.sub(r'\\([\\rn])', lambda m: {'\\': '\\', 'r': '\r', 'n': '\n'}[m.group(1)], line)
+
+
 def _log_hits(project_path, proj_folder, names):
     p = hits_log_path(project_path, proj_folder)
     if not p or not names:
@@ -359,7 +367,7 @@ def _log_hits(project_path, proj_folder, names):
         # One append per prompt, opened 'a': concurrent sessions in the same
         # project interleave lines instead of losing each other's counts.
         with open(p, 'a', encoding='utf-8') as f:
-            f.write('\n'.join(n for n in names if n) + '\n')
+            f.write('\n'.join(_hit_line(n) for n in names if n and n.strip()) + '\n')
     except Exception:
         pass
 
@@ -375,8 +383,9 @@ def fold_hits(project_path, proj_folder, mem):
     try:
         with open(p, encoding='utf-8', errors='replace') as f:
             for line in f:
-                name = line.strip()
-                if name:
+                raw = line.rstrip('\n')
+                if raw.strip():
+                    name = _hit_name(raw)
                     counts[name] = counts.get(name, 0) + 1
     except OSError:
         return False
