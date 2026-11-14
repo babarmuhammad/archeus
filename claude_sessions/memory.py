@@ -1357,7 +1357,7 @@ def forget_pass(project_path, proj_folder=None):
         out['lessons'] = _lessons.apply_decay(mem) or 0
     except Exception:
         pass
-    kept, dropped, stale = [], 0, 0
+    kept, dropped, stale, flipped = [], 0, 0, 0
     for e in mem.get('entities', []):
         if not e.get('valid', True) and e.get('type') != 'lesson':
             age = _age_days(e.get('invalidated_at'))
@@ -1367,16 +1367,17 @@ def forget_pass(project_path, proj_folder=None):
         elif e.get('type') != 'lesson':
             age = _age_days(e.get('confirmed_at') or e.get('created_at'))
             if age is not None and age > _STALE_DAYS:
+                flipped += not e.get('stale')
                 e['stale'] = True
                 stale += 1
             else:
-                e.pop('stale', None)
+                flipped += e.pop('stale', None) is not None
         kept.append(e)
     mem['entities'] = kept
     mem['stale_count'] = stale
     out['invalid'] = dropped
     out['stale'] = stale
-    if dropped or out['lessons'] or before != len(kept) or stale:
+    if dropped or out['lessons'] or before != len(kept) or flipped:
         save_memory(project_path, proj_folder, mem)
     return out
 
@@ -1616,18 +1617,21 @@ def auto_cycle(project_path, proj_folder, project_name, auto_cap=6):
     # the prompt is about REVIEWING lessons, not about whether to notice them.
     # merge_lessons applies memory_lessons_autoapprove, so a low-confidence
     # lesson still lands as pending and waits for a human.
+    resync = False
     if st.get('memory_lessons', 'prompt') != 'off':
         try:
             from . import lessons as _lessons
             mem = load_memory(project_path, proj_folder)
             sids = _lessons.pending_sids(proj_folder, mem)
             if sids:
+                resync = True  # scan_sessions saves per session, so a raise can follow a save
                 added, scanned = _lessons.scan_sessions(project_path, proj_folder, sids)
                 out['lessons'], out['scanned'] = added, scanned
+                resync = bool(added)
         except Exception:
             _c.log.exception('memory: auto lesson scan failed')
 
-    if out['lessons']:
+    if resync:
         # the digest counts lessons, so it is now short by exactly `added`
         try:
             mem = load_memory(project_path, proj_folder)
