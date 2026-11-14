@@ -10,7 +10,7 @@ clearing, then defaults and swallowed errors):
  3. 1367-1371  stale comes from confirmed_at, then created_at; fresh is not stale.
  4. 1372-1373  a fresh entity loses an old stale flag (checked through a save).
  5. 1379-1380  nothing to change: no save.
- 6. 1379       PREMISE: a graph that stays stale is saved on every pass. Strict xfail.
+ 6. 1379       a graph that stays stale is saved on every pass. Fixed.
  7. 1352-1353  an empty graph returns early with the episode count kept.
  8. 1345-1350, 1356-1359  TTL and decay failures are swallowed; the pass goes on.
  9. 1320-1328  _age_days: None for bad input, future stamps clamp to 0.
@@ -118,11 +118,6 @@ def test_forget_writes_nothing_when_nothing_changed(graph):
     assert rep == {'episodes': 0, 'lessons': 0, 'invalid': 0, 'stale': 0}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "memory.py:1379-1380 saves whenever stale is non-zero, so a project whose facts "
-    "stay stale is rewritten on every scheduler pass even though no flag or count "
-    "changed. Caller: gui_api.py:711 (_auto_scan_pass calls forget_pass per opted-in "
-    "project). Efficiency, not data loss."))
 def test_forget_does_not_rewrite_unchanged_stale_graph(graph):
     """Expected: a second pass over an already-flagged graph writes nothing.
     Current: it writes the same graph again."""

@@ -5,14 +5,14 @@ Branches, ranked (refusal and drop first, then merge and decay boundaries,
 then defaults):
 
  1. 133-134  a non-dict model result (None, list) yields [].
- 2. 142      PREMISE: a non-numeric confidence raises ValueError and nothing
-             catches it, so the session scan aborts. Strict xfail.
+ 2. 142      a non-numeric confidence raises ValueError and nothing
+             catches it, so the session scan aborts. Fixed.
  3. 136-138  non-dict items and items without a title are skipped.
- 4. 136      PREMISE: the cap runs before the filter, so invalid items use up
-             the eight slots. Strict xfail.
+ 4. 136      the cap runs before the filter, so invalid items use up
+             the eight slots. Fixed.
  5. 139-143  title 80, summary 300, files 4; missing kind is 'decision';
              missing or None confidence is 0.5.
- 6. 141      PREMISE: an out-of-enum kind reaches the entity. Strict xfail.
+ 6. 141      an out-of-enum kind reaches the entity. Fixed.
  7. 149-151  _jaccard of two empty texts is 0.0; identical text is 1.0.
  8. 160      auto-approve None disables it; 0 disables it; 0.8 is the default.
  9. 164-171  merge only when Jaccard is strictly above 0.6.
@@ -58,11 +58,6 @@ def test_extract_non_dict_result_is_empty(seams):
     assert lessons.extract_lessons('/proj', '/folder', 'abcdef1234') == []
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "lessons.py:142 float('high') raises ValueError; nothing in extract_lessons, "
-    "scan_sessions (lessons.py:228-237) or memory._claude_json catches it, so the "
-    "whole session scan aborts and lessons_scanned is never stamped. Reachable on "
-    "the fallback JSON path only (--json-schema enforces number)."))
 def test_extract_bad_confidence_skips_item_not_session(seams):
     """Expected: a malformed confidence drops or defaults that one item and the
     valid lesson after it is kept. Current: ValueError escapes the call."""
@@ -96,10 +91,6 @@ def test_extract_truncates_and_defaults(seams):
     assert second['confidence'] == 0.5
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "lessons.py:136 caps the raw list with [:MAX_LESSONS] before the filter at "
-    "lessons.py:137, so eight invalid items leave zero of the two valid ones that "
-    "follow. Reachable on the fallback JSON path only."))
 def test_extract_cap_counts_only_valid_items(seams):
     """Expected: at most MAX_LESSONS valid lessons, so the two valid items after
     eight invalid ones are returned. Current: the slice keeps only the invalid."""
@@ -108,10 +99,6 @@ def test_extract_cap_counts_only_valid_items(seams):
     assert [l['title'] for l in out] == ['A', 'B']
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "lessons.py:141 copies 'kind' without checking the LESSONS_SCHEMA enum "
-    "(lessons.py:95-109); the fallback JSON path does not enforce it, so 'bogus' "
-    "reaches the entity."))
 def test_extract_unknown_kind_is_coerced(seams):
     """Expected: a kind outside error_fix|decision|correction|preference becomes
     'decision'. Current: it is copied verbatim."""

@@ -9,7 +9,7 @@ partial progress, then the report fields and swallowed errors):
  3. 1622-1626  the scan runs only with pending sids and its counts are copied.
  4. 1627-1628  a scan failure is logged and the cycle still stamps.
  5. PREMISE    a scan that persists lessons and then raises still needs a digest
-               re-sync. Strict xfail.
+               re-sync. Fixed.
  6. 1630       scanned > 0 with added == 0 does not re-sync.
  7. 1601-1613  report fields come from the refreshed graph, with int and '' defaults.
  8. 1601       auto_cap is passed through, with 6 as the default.
@@ -131,13 +131,6 @@ def test_auto_cycle_scan_failure_is_logged_and_stamped(world):
     assert world['graph']['auto_updated'] == NOW
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "memory.py:1626 copies the scan counts only when scan_sessions returns, and the "
-    "re-sync at memory.py:1630-1638 keys on out['lessons']. lessons.py:236 saves "
-    "after every session, so a raise on the second session leaves the first "
-    "session's lessons on disk while out['lessons'] stays 0: the CLAUDE.md count and "
-    "the rules are not re-synced. Reachable when memory._claude_json raises after an "
-    "earlier session saved."))
 def test_auto_cycle_partial_scan_still_resyncs_digest(world):
     """Expected: a lesson persisted before the scan raised still triggers a digest
     and rules re-sync. Current: no re-sync happens."""

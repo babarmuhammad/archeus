@@ -5,8 +5,8 @@ scan_sessions, _set_status, _evict).
 Branches, ranked (refusal and status first, then persist order and swallowed
 errors, then empty-input boundaries):
 
- 1. 315-318  PREMISE: _evict deletes any id with no type check. Strict xfail.
- 2. 306-310  PREMISE: approve on a pinned lesson drops it to 'approved'. Strict xfail.
+ 1. 315-318  _evict deletes any id with no type check. Fixed.
+ 2. 306-310  approve on a pinned lesson drops it to 'approved'. Fixed.
  3. 306-312  an unknown id saves the unchanged graph and returns None.
  4. 199-205  empty sids start no thread and return None.
  5. 206-207  a live scan lock refuses a second worker.
@@ -84,11 +84,6 @@ def _lesson_item(title):
             'confidence': 0.5, 'files': []}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "lessons.py:315-318 _evict filters on e.get('id') != lesson_id with no type "
-    "check. Call chain: POST /api/lessons action 'evict' -> gui_api.api_lessons_post "
-    "(gui_api.py:2637-2638, body['id'] taken as is) -> lessons._evict. A non-lesson "
-    "id therefore deletes that entity."))
 def test_evict_refuses_non_lesson_id(graph):
     """Expected: evicting an id whose entity is not type 'lesson' is refused and
     the fact survives. Current: the fact is removed and the graph saved."""
@@ -98,11 +93,6 @@ def test_evict_refuses_non_lesson_id(graph):
     assert 'fact:1' in {e['id'] for e in graph['graph']['entities']}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "lessons.py:306-310 _set_status overwrites e['status'] unconditionally, so a "
-    "pinned lesson is downgraded to 'approved' by the TUI 'a' key (lessons.py:291-292) "
-    "or the GUI approve action (gui_api.py:2634-2636). apply_decay (lessons.py:191) "
-    "then treats it as evictable after the TTL."))
 def test_approve_does_not_unpin(graph):
     """Expected: approving a pinned lesson leaves it pinned. Current: it becomes
     'approved' and is exposed to decay."""

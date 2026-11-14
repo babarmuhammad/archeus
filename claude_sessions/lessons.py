@@ -133,14 +133,21 @@ def extract_lessons(project_path, proj_folder, sid):
     if not isinstance(data, dict):
         return []
     out = []
-    for l in (data.get('lessons') or [])[:MAX_LESSONS]:
+    kinds = LESSONS_SCHEMA['properties']['lessons']['items']['properties']['kind']['enum']
+    for l in data.get('lessons') or []:
         if not isinstance(l, dict) or not l.get('title'):
+            continue
+        try:
+            conf = float(l.get('confidence', 0.5) or 0.5)
+        except (TypeError, ValueError):  # the prose fallback is not schema-checked
             continue
         out.append({'title': str(l['title'])[:80],
                     'summary': str(l.get('summary', ''))[:300],
-                    'kind': l.get('kind', 'decision'),
-                    'confidence': float(l.get('confidence', 0.5) or 0.5),
+                    'kind': l['kind'] if l.get('kind') in kinds else 'decision',
+                    'confidence': conf,
                     'files': [str(f) for f in (l.get('files') or [])][:4]})
+        if len(out) == MAX_LESSONS:
+            break
     return out
 
 
@@ -307,12 +314,15 @@ def _set_status(project_path, proj_folder, lesson_id, status):
     mem = memory.load_memory(project_path, proj_folder)
     for e in mem.get('entities', []):
         if e.get('id') == lesson_id:
-            e['status'] = status
+            # approving a pinned lesson must not unpin it
+            if not (status == 'approved' and e.get('status') == 'pinned'):
+                e['status'] = status
             break
     memory.save_memory(project_path, proj_folder, mem)
 
 
 def _evict(project_path, proj_folder, lesson_id):
     mem = memory.load_memory(project_path, proj_folder)
-    mem['entities'] = [e for e in mem.get('entities', []) if e.get('id') != lesson_id]
+    mem['entities'] = [e for e in mem.get('entities', [])
+                       if e.get('id') != lesson_id or e.get('type') != 'lesson']
     memory.save_memory(project_path, proj_folder, mem)
