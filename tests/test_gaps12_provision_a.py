@@ -32,9 +32,6 @@ def test_commandless_entries_collapse_per_event(monkeypatch):
     assert provision._n_hooks('cfg') == 3
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/provision.py:50 calls .items() on a list-valued 'hooks'; "
-    "the diff caller claude_sessions/gui_api.py:2352-2353 has no guard"))
 def test_hooks_value_not_a_mapping_does_not_crash(monkeypatch):
     _settings(monkeypatch, {'hooks': [{'Stop': []}]})
     assert provision._hooks_of('cfg') == {}

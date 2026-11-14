@@ -42,20 +42,25 @@ def _hooks_of(cfgdir):
 
     Keyed by (event, commands), so two entries running the same command on the
     same event collapse: you cannot install the same hook twice, and the diff is
-    about what is MISSING. `_n_hooks` is what the report counts, so the number
-    here agrees with the one the Hooks page shows.
+    about what is MISSING. The report counts with `_n_hooks` instead, which
+    keeps duplicates, as the Hooks page does.
     """
     from . import hooks as h
     out = {}
-    for event, block in (h._load(cfgdir).get('hooks') or {}).items():
+    for event, block in _hook_blocks(cfgdir).items():
         for entry in (block if isinstance(block, list) else []):
             out[(event, tuple(h._cmd_keys(entry)))] = entry
     return out
 
 
-def _n_hooks(cfgdir):
+def _hook_blocks(cfgdir):
     from . import hooks as h
-    return sum(len(b or []) for b in (h._load(cfgdir).get('hooks') or {}).values())
+    blocks = h._load(cfgdir).get('hooks')
+    return blocks if isinstance(blocks, dict) else {}  # a hand-edited settings.json can hold anything
+
+
+def _n_hooks(cfgdir):
+    return sum(len(b or []) for b in _hook_blocks(cfgdir).values())
 
 
 def _plugins_of(cfgdir):

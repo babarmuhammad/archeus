@@ -131,10 +131,6 @@ def test_cfgdir_is_two_levels_above_session_folder(monkeypatch, tmp_path):
     assert (row['branch'], row['title']) == ('main', 'T')
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/worktrees.py:175 store.transcript_path is outside the try at "
-    ":176; store.py:92-94 raises ValueError for a stem that is not an encoded id, "
-    "and board() at :212 has no guard, so one odd .jsonl name aborts the join"))
 def test_unparseable_session_id_is_skipped_not_fatal(monkeypatch, tmp_path):
     cwd_good = str(tmp_path / 'wt-good')
     _world(monkeypatch, tmp_path, {'a': {
