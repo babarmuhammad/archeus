@@ -297,6 +297,9 @@ def _account_actions(s, name, hid=None, built_in=''):
     acts.append(('Cancel', 'cancel'))
     act = menu(acts, f"LOGIN  /  {name}")
     if act == 'switch':
+        if not d and name != 'default':
+            flash(f"No login named '{name}'", ok=False, secs=1.8)
+            return
         s['claude_config_dir'] = d
         save_settings(s)
         flash(f"Active account → {name}. Restart archeus to fully apply.", secs=2)
