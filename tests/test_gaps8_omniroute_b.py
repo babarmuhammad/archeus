@@ -128,9 +128,6 @@ def test_save_dead_write_failure_is_swallowed(cache, monkeypatch, tmp_path):
     assert blocker.read_text(encoding='utf-8') == 'x'
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/omniroute.py:377 save_dead indexes a JSON list read at :372 '
-    '(only the read is inside try/except); TypeError escapes to record_result at :408'))
 def test_save_dead_list_cache_does_not_crash(cache):
     path, _ = cache
     path.write_text('[{"id": "old"}]', encoding='utf-8')

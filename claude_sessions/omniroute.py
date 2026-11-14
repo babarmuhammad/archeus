@@ -369,8 +369,10 @@ def save_dead(results, clear=False):
     if not clear and os.path.isfile(p):
         try:
             with open(p, encoding='utf-8') as f:
-                cur = json.load(f) or {}
+                cur = json.load(f)
         except Exception:
+            cur = {}
+        if not isinstance(cur, dict):
             cur = {}
     for r in results or []:
         if r.get('ok'):
