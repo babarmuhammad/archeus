@@ -166,6 +166,8 @@ class ExecutionSpec:
     # execution's account and project, and the inventory recorded from them,
     # whose flags the adapter's argv reads (None: every source excluded)
     opt_ins: tuple = ()
+    #: the (owner, kind, name, digest) of those opt-ins that pin a file's digest
+    opt_pins: tuple = ()
     inventory: Optional[Mapping] = None
     # PV-20 S1 (§3.4): Core's isolated launch for this process, or None for the
     # detached one. An object and not a flag, on purpose: a flag without the launcher

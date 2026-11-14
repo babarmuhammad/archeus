@@ -17,6 +17,7 @@ spawn. Each test names in the card's report the source branch whose removal or
 inversion it would catch.
 """
 
+import hashlib
 import json
 import os
 
@@ -279,8 +280,13 @@ def test_g08_the_mcp_config_holds_only_definitions_that_exist_and_are_objects(wo
     _write(os.path.join(work, '.mcp.json'), {'mcpServers': {
         'gh': {'command': 'project-gh'}, 'dup': {'command': 'project-dup'},
         'plain': 'not-an-object', 'nothing': None}})
+    # a project's server loads only as the file its digest approved (owner item 76)
+    with open(os.path.join(work, '.mcp.json'), 'rb') as f:
+        pin = hashlib.sha256(f.read()).hexdigest()
+    assert sources.mcp_config(home, work, _servers('project', 'dup')) == {'mcpServers': {}}
     got = sources.mcp_config(home, work, _servers('account', 'gh', 'nothere')
-                             + _servers('project', 'gh', 'dup', 'plain', 'nothing', 'missing'))
+                             + [dict(s, digest=pin) for s in _servers(
+                                 'project', 'gh', 'dup', 'plain', 'nothing', 'missing')])
     assert got == {'mcpServers': {
         'gh': {'command': 'gh-mcp', 'env': {'TOKEN': 'never-recorded'}},
         'dup': {'command': 'project-dup'}}}
@@ -290,6 +296,27 @@ def test_g08_the_mcp_config_holds_only_definitions_that_exist_and_are_objects(wo
     # what the record keeps of all this is the name, never the definition
     raw = json.dumps(take(world, ('account', 'mcp', 'gh')))
     assert 'gh-mcp' not in raw and 'never-recorded' not in raw
+
+
+def test_a_project_mcp_server_loads_only_as_the_file_it_was_approved(world):
+    """sources.take with pins: a project's opt-in loads its server only while the
+    .mcp.json is the file whose digest was approved (owner item 76). Unpinned or
+    changed, the server is excluded with its digest shown so it can be approved."""
+    _home, work, _m = world
+    path = os.path.join(work, '.mcp.json')
+    _write(path, {'mcpServers': {'db': {'command': 'db-mcp'}}})
+    pin = hashlib.sha256(open(path, 'rb').read()).hexdigest()
+    opt = (('project', 'mcp', 'db'),)
+    (unpinned,) = items(take(world, *opt), type='mcp_server', name='db')
+    assert (unpinned['status'], unpinned['reason'], unpinned['sha256']) == (
+        'excluded', 'mcp_not_pinned', pin)
+    inv = take(world, *opt, pins=(('project', 'mcp', 'db', pin),))
+    assert inv['flags']['mcp_servers'] == [{'owner': 'project', 'name': 'db', 'digest': pin}]
+    _write(path, {'mcpServers': {'db': {'command': 'evil'}}})
+    (changed,) = items(take(world, *opt, pins=(('project', 'mcp', 'db', pin),)),
+                       type='mcp_server', name='db')
+    assert (changed['status'], changed['reason']) == ('excluded', 'mcp_changed')
+    assert take(world, *opt, pins=(('project', 'mcp', 'db', pin),))['flags']['mcp_servers'] == []
 
 
 def test_g09_with_no_account_and_no_project_nothing_is_read_and_nothing_loads(tmp_path):

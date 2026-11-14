@@ -116,7 +116,9 @@ USAGE = """usage: archeus core [--open] [--remote-host H]...
        archeus executions opt-ins
                                 what executions may load from their settings sources
                                 (ADR-0049): every opt-in, in and out
-       archeus executions opt-in|opt-out <account|project> <source|plugin|mcp|context|verify> <name>
+       archeus executions opt-in|opt-out <account|project> <source|plugin|mcp|context|verify> <name> [--digest <sha256>]
+                                a project's mcp opt-in pins the sha256 of its .mcp.json:
+                                approve a changed file again with its new digest
                                 let an account's or a project's executions load a
                                 settings source (an account: user; a project: project,
                                 local), a plugin or an MCP server again, or stop it;
@@ -191,9 +193,10 @@ def main(argv):
     if verb == 'automation' and args and (args == ['list'] or len(args) == 2):
         return automation(args[0], args[1] if len(args) == 2 else None)
     if verb == 'executions' and (args == ['opt-ins'] or (
-            len(args) == 4 and args[0] in _OPT
-            and args[2] in ('source', 'plugin', 'mcp', 'context', 'verify'))):
-        return opt_ins(*args)
+            len(args) in (4, 6) and args[0] in _OPT
+            and args[2] in ('source', 'plugin', 'mcp', 'context', 'verify')
+            and (len(args) == 4 or args[4] == '--digest'))):
+        return opt_ins(*args[:4], digest=args[5] if len(args) == 6 else None)
     opts = _flags(args[1:] if verb in ('resume', 'handoff', 'wait') else args)
     if verb == 'wait' and args and opts is not None and set(opts) <= {'until', 'timeout'}:
         return wait(args[0], opts.get('until'), opts.get('timeout', '60'))
@@ -745,7 +748,7 @@ def automation(what, arg):
 _OPT = {'opt-in': True, 'opt-out': False}
 
 
-def opt_ins(what, owner=None, kind=None, name=None):
+def opt_ins(what, owner=None, kind=None, name=None, digest=None):
     """P20 D6 (ADR-0049): list the opt-ins, or opt one in or out. Core decides
     and records; this sends the command with the local token."""
     import os
@@ -766,7 +769,7 @@ def opt_ins(what, owner=None, kind=None, name=None):
         return 0
     out = _get(info, 'POST', endpoints.set_opt_in(), {
         'owner_id': owner, 'kind': kind, 'name': name, 'opted_in': _OPT[what],
-        'idempotency_key': os.urandom(16).hex()})
+        **({'digest': digest} if digest else {}), 'idempotency_key': os.urandom(16).hex()})
     if out is None:
         return 2
     x = out['opt_in']

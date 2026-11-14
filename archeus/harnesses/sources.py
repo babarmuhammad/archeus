@@ -105,11 +105,25 @@ def _json(path):
     data, err = _read(path)
     if data is None:
         return None, err
+    return _parse(data)
+
+
+def _parse(data):
     try:
         got = json.loads(data.decode('utf-8-sig'))
     except (ValueError, RecursionError):
         return None, 'not JSON'
     return (got, None) if isinstance(got, dict) else (None, 'not a JSON object')
+
+
+def _pinned_json(path, digest):
+    """The object of a project's .mcp.json, read only while its bytes are the ones
+    approved (the sha256 pinned at opt-in). One read, so the bytes hashed are the
+    bytes parsed. None when the digest is absent or the file changed."""
+    data, _err = _read(path)
+    if data is None or digest is None or hashlib.sha256(data).hexdigest() != digest:
+        return None
+    return _parse(data)[0]
 
 
 def _inside(path, root):
@@ -225,16 +239,20 @@ def _isolated_why(source, type_):
     return None
 
 
-def take(home, workdir, opt_ins, *, recorded_only=None, managed=None, isolated=False):
+def take(home, workdir, opt_ins, *, recorded_only=None, managed=None, isolated=False,
+         pins=()):
     """The inventory of one execution: *home* is the account's config dir
     (None: none), *workdir* where it runs, *opt_ins* the (owner, kind, name)
-    that apply to it — exactly its account's and its project's. *isolated* is
-    Core's isolation decision for it, never the execution's."""
+    that apply to it — exactly its account's and its project's. *pins* the
+    (owner, kind, name, digest) of those that pin a file: a project's MCP server
+    loads only while its .mcp.json is the file approved. *isolated* is Core's
+    isolation decision for it, never the execution's."""
     recorded_only = tuple(RECORDED_ONLY if recorded_only is None else recorded_only)
     managed = MANAGED if managed is None else managed
     opted_sources = {n for _o, k, n in opt_ins if k == 'source'}
     opted_plugins = sorted({n for _o, k, n in opt_ins if k == 'plugin'})
     opted_mcp = sorted({(o, n) for o, k, n in opt_ins if k == 'mcp'})
+    pinned = {n: d for o, k, n, d in pins if (o, k) == ('project', 'mcp')}
     if isolated:
         # an isolated CLI reads its private config dir, not the home: the home's
         # own source cannot load there, opted in or not
@@ -327,12 +345,21 @@ def take(home, workdir, opt_ins, *, recorded_only=None, managed=None, isolated=F
         names, err = _mcp_names(path) if path else ([], None)
         if err:
             add(src, 'unreadable', os.path.basename(path), 'excluded', error=err)
+        data = _read(path)[0] if path and owner == 'project' else None
+        sha = hashlib.sha256(data).hexdigest() if data is not None else None
         for n in names:
             seen.add((owner, n))
             on = (owner, n) in opted_mcp
+            if on and owner == 'project' and (sha is None or sha != pinned.get(n)):
+                # not approved as this file: the opt-in does not apply (owner item 76);
+                # the digest is shown so the user can approve it
+                add(src, 'mcp_server', n, 'excluded', sha256=sha,
+                    reason='mcp_changed' if n in pinned else 'mcp_not_pinned')
+                continue
             add(src, 'mcp_server', n, 'opted_in' if on else 'excluded')
             if on and not isolated:
-                servers.append({'owner': owner, 'name': n})
+                servers.append({'owner': owner, 'name': n, **(
+                    {'digest': sha} if owner == 'project' else {})})
     for owner, n in opted_mcp:
         if (owner, n) not in seen:
             add('user' if owner == 'account' else 'project', 'mcp_server', n, 'not_found')
@@ -375,14 +402,18 @@ def take(home, workdir, opt_ins, *, recorded_only=None, managed=None, isolated=F
 
 def mcp_config(home, workdir, servers):
     """The definitions of the opted-in *servers*, read from where they live
-    (account: the home's `.claude.json`; project: the workdir's `.mcp.json`) —
-    for the `--mcp-config` file only, never for the record."""
+    (account: the home's `.claude.json`; project: the workdir's `.mcp.json`, only
+    while it is the file the server's digest approved) — for the `--mcp-config`
+    file only, never for the record."""
     out = {}
     for s in servers:
         path = (os.path.join(home, '.claude.json') if s['owner'] == 'account' and home else
                 os.path.join(workdir, '.mcp.json') if s['owner'] == 'project' and workdir
                 else None)
-        d, _err = _json(path) if path else (None, None)
+        if s['owner'] == 'project':
+            d = _pinned_json(path, s.get('digest')) if path else None
+        else:
+            d = _json(path)[0] if path else None
         got = ((d or {}).get('mcpServers') or {}).get(s['name'])
         if isinstance(got, dict) and s['name'] not in out:
             out[s['name']] = got

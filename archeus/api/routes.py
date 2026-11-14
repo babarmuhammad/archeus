@@ -593,7 +593,8 @@ def set_opt_in(req):
     b = req.body
     return 200, req.run(optins.set_opt_in, {
         'owner_id': b['owner_id'], 'kind': b['kind'], 'name': b['name'],
-        'opted_in': b['opted_in'], 'expected_version': b.get('expected_version')})
+        'opted_in': b['opted_in'], 'expected_version': b.get('expected_version'),
+        **({'digest': b['digest']} if 'digest' in b else {})})
 
 
 def list_harnesses(req):

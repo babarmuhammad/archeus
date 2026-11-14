@@ -436,8 +436,8 @@ def test_04_an_opt_out_ask_against_an_entry_already_out_is_that_rows_own_answer(
     again = ask(db, actor, acc, 'mcp', 'gh', False)
     assert again['changed'] is False
     assert again['opt_in'] is not None, 'a revoked entry is not a missing one'
-    assert sorted(again['opt_in']) == ['account_id', 'created_at', 'id', 'kind', 'name',
-                                       'opted_in', 'project_id', 'updated_at', 'version']
+    assert sorted(again['opt_in']) == ['account_id', 'created_at', 'digest', 'id', 'kind',
+                                       'name', 'opted_in', 'project_id', 'updated_at', 'version']
     assert (again['opt_in']['id'], again['opt_in']['opted_in'], again['opt_in']['version']
             ) == (row_id, False, 2)
 
@@ -507,8 +507,9 @@ def test_05_the_credential_writes_the_opt_in_and_no_field_of_the_body_claims_it(
     assert made.json()['changed'] is True
     # what the answer describes: the account's row, opted in, version 1, and no
     # field naming anybody as its author (routes.py 590-596 sends no actor)
-    assert sorted(made.json()['opt_in']) == ['account_id', 'created_at', 'id', 'kind', 'name',
-                                            'opted_in', 'project_id', 'updated_at', 'version']
+    assert sorted(made.json()['opt_in']) == ['account_id', 'created_at', 'digest', 'id', 'kind',
+                                            'name', 'opted_in', 'project_id', 'updated_at',
+                                            'version']
     assert made.json()['opt_in']['opted_in'] is True and made.json()['opt_in']['version'] == 1
     (row,) = opt_rows(db)
     assert (row.entity.account_id, row.entity.project_id) == (acc, None)
@@ -553,7 +554,7 @@ def test_05_the_credential_writes_the_opt_in_and_no_field_of_the_body_claims_it(
     got = get(api, token_b, '/v1/opt-ins')
     assert got._status == 200
     assert got.json() == {'opt_ins': [{
-        'id': row.entity.id, 'kind': 'mcp', 'name': 'gh', 'account_id': acc,
+        'id': row.entity.id, 'kind': 'mcp', 'name': 'gh', 'account_id': acc, 'digest': None,
         'project_id': None, 'opted_in': False, 'version': 2,
         'created_at': row.created_at, 'updated_at': row.updated_at,
         'owner': 'account', 'owner_id': acc}]}

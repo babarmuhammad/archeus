@@ -34,30 +34,37 @@ def _find(conn_or_tx, owner, owner_id, kind, name):
     return got[0] if got else None
 
 
-def set_opt_in(tx, *, actor, owner_id, kind, name, opted_in, expected_version=None):
+def set_opt_in(tx, *, actor, owner_id, kind, name, opted_in, expected_version=None,
+               digest=None):
     """Opt *name* of *kind* in (or out) for every execution of the account or
     project *owner_id*. The first opt-in inserts the row; every later change is
     the same row's next version. Asking for what already holds writes nothing
-    and says so (`changed` False); an opt-out of what was never opted in too."""
+    and says so (`changed` False); an opt-out of what was never opted in too.
+    A project's MCP opt-in pins *digest*, the sha256 of its .mcp.json: a new
+    approval (a new digest) is a change of the same row."""
     if actor.kind != 'user_device':
         raise A.NotPermitted('only a user device opts a settings source, plugin or MCP '
                              'server in or out (ADR-0049)')
     if opted_in and not isinstance(opted_in, bool):
         raise ValueError('OptIn.opted_in is a boolean')
     owner, orow = _owner(tx, owner_id)
+    pinned = owner == 'project' and kind == 'mcp'
+    if digest is not None and not pinned:
+        raise ValueError('only a project MCP opt-in pins a digest')
     row = _find(tx, owner, owner_id, kind, name)
     if row is None:
         if not opted_in:
             return {'opt_in': None, 'changed': False}
         o = entities.OptIn(id=ids.new_id('opt_in'), kind=kind, name=name, opted_in=True,
-                           **{owner + '_id': owner_id})
+                           digest=digest, **{owner + '_id': owner_id})
         row = tx.insert(o, actor=actor)
-    elif row.entity.opted_in == opted_in:
+    elif row.entity.opted_in == opted_in and (not opted_in or row.entity.digest == digest):
         if expected_version is not None and expected_version != row.version:
             raise lifecycle.VersionConflict(row.entity.id, expected_version, row.version)
         return {'opt_in': view(row), 'changed': False}
     else:
-        row = tx.update(entities.OptIn, row.entity.id, {'opted_in': opted_in}, actor=actor,
+        fields = {'opted_in': opted_in, **({'digest': digest} if opted_in else {})}
+        row = tx.update(entities.OptIn, row.entity.id, fields, actor=actor,
                         expected_version=expected_version)
     scope = {}
     if owner == 'project':
@@ -76,16 +83,26 @@ def listing(conn):
             for r in rows.where(conn, entities.OptIn)]
 
 
+def _applying(conn, account_id, project_id):
+    """The opted-in rows of exactly this account and exactly this project."""
+    from ...infra.db import rows
+    return [(owner, r.entity) for owner, oid in (('account', account_id), ('project', project_id))
+            if oid is not None
+            for r in rows.where(conn, entities.OptIn, **{owner + '_id': oid})
+            if r.entity.opted_in]
+
+
 def effective(conn, *, account_id, project_id):
     """What one execution may load: the opted-in rows of exactly its account
     and exactly its project, as (owner, kind, name). Another account's or
     project's opt-in never applies."""
-    from ...infra.db import rows
-    out = []
-    for owner, oid in (('account', account_id), ('project', project_id)):
-        if oid is None:
-            continue
-        out += [(owner, r.entity.kind, r.entity.name)
-                for r in rows.where(conn, entities.OptIn, **{owner + '_id': oid})
-                if r.entity.opted_in]
-    return tuple(sorted(out))
+    return tuple(sorted((owner, e.kind, e.name) for owner, e in
+                        _applying(conn, account_id, project_id)))
+
+
+def pins(conn, *, account_id, project_id):
+    """The (owner, kind, name, digest) of each opt-in of this execution that pins
+    a digest. An opt-in that pins none (written before the pin) is absent: the
+    harness treats it as not approved."""
+    return tuple(sorted((owner, e.kind, e.name, e.digest) for owner, e in
+                        _applying(conn, account_id, project_id) if e.digest is not None))

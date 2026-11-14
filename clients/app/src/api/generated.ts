@@ -1596,6 +1596,7 @@ export interface SetOptInRequest {
   name: string;
   opted_in: boolean;
   expected_version?: number | null;
+  digest?: string;
   idempotency_key: string;
 }
 

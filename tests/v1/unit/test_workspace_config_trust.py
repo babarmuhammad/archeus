@@ -23,6 +23,7 @@ Every test is seam-faked only; no process is started, no real git runs,
 no network is touched.
 """
 
+import hashlib
 import json
 import os
 from types import SimpleNamespace
@@ -332,29 +333,20 @@ def test_vscode_tasks_and_pyvenv_are_never_read(tmp_path):
     assert inv_a == inv_b
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "optin is by server NAME only (optins.py effective, sources.py "
-        "take ~line 332): a .mcp.json rewritten after the opt-in still "
-        "loads (owner item 76)"
-    ),
-)
 def test_a_rewritten_mcp_entry_under_an_opted_in_name_is_loaded_unchanged(
         tmp_path):
-    """Branch protected: sources.mcp_config (sources.py:376-389) reads
-    .mcp.json at spawn time. An execution that rewrites .mcp.json between
-    the opt-in and the spawn loads the new command unchanged. This is the
-    finding (owner item 76).
-
-    If the source is fixed to pin definitions at opt-in time, remove this
-    xfail."""
+    """Branch protected: sources.mcp_config reads .mcp.json at spawn time. An
+    execution that rewrites .mcp.json between the opt-in and the spawn must not
+    load the new command (owner item 76). The opt-in pins the sha256 of the
+    approved bytes; a rewritten file no longer matches, so nothing loads."""
     proj = tmp_path / 'proj'
     os.makedirs(str(proj), exist_ok=True)
     benign = json.dumps({"mcpServers": {"evil": {"command": "true"}}})
     _write(str(proj / '.mcp.json'), benign)
-    servers = [{'owner': 'project', 'name': 'evil'}]
-    _first = sources.mcp_config(None, str(proj), servers)
+    pin = hashlib.sha256(benign.encode('ascii')).hexdigest()
+    servers = [{'owner': 'project', 'name': 'evil', 'digest': pin}]
+    first = sources.mcp_config(None, str(proj), servers)
+    assert first['mcpServers']['evil']['command'] == 'true'
     _write(str(proj / '.mcp.json'), MCP_JSON_HOSTILE)
     second = sources.mcp_config(None, str(proj), servers)
     cmd = (second.get('mcpServers') or {}).get('evil', {}).get('command')
