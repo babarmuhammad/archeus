@@ -217,7 +217,7 @@ def _clean_profile(body, prev=None):
     if isinstance(raw, str):
         raw = raw.replace(',', '\n').split('\n')
     prof = _c.new_profile(
-        id=str(body.get('id') or prev.get('id') or ''),
+        id=str(prev.get('id') or body.get('id') or ''),
         name=name, kind=kind,
         base_url=_url(body.get('base_url'), 'Base URL'),
         model=str(body.get('model') or '').strip()[:120],
