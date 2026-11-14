@@ -243,17 +243,14 @@ def test_an_execution_inventory_is_a_sha256_artifact_or_nothing():
             _execution(inventory_sha256=bad)
 
 
-@pytest.mark.xfail(strict=True, raises=TypeError,
-                   reason="Execution._check hands a non-string to _HEX64.fullmatch "
-                          "(entities.py:1050): a NULL column arrives as TypeError, which a "
-                          "writer that catches ValueError would let through")
 def test_an_inventory_that_is_not_a_string_is_refused_as_a_value_error():
     """entities.py:1050: three digest guards in this range (1050, 1232, 1332)
     hand the value straight to `_HEX64.fullmatch`, so a JSON payload with a
     number where a digest belongs arrives as a TypeError, not the ValueError a
     writer catches; `Approval.action_hash` (entities.py:1846) is the only one
     that tests `isinstance(..., str)` first."""
-    _execution(inventory_sha256=7)
+    with pytest.raises(ValueError):
+        _execution(inventory_sha256=7)
 
 
 @pytest.mark.parametrize('isolated', [True, False], ids=['true', 'false'])
@@ -591,12 +588,9 @@ def test_a_check_output_is_named_by_a_sha256(sha):
         _verification(checks=(dict(GOOD_CHECK, output_sha256=sha),))
 
 
-@pytest.mark.xfail(strict=True, raises=TypeError,
-                   reason="entities.py:1232 hands a non-string to _HEX64.fullmatch: the "
-                          "same leak as Execution.inventory_sha256 (see the Execution "
-                          "section); a JSON check dict with a number is a TypeError")
 def test_a_check_output_that_is_not_a_string_is_refused_as_a_value_error():
-    _verification(checks=(dict(GOOD_CHECK, output_sha256=7),))
+    with pytest.raises(ValueError):
+        _verification(checks=(dict(GOOD_CHECK, output_sha256=7),))
 
 
 GOOD_CRITERION = {'index': 0, 'text': 'docs build', 'check': 'automatic', 'result': 'satisfied'}
@@ -804,13 +798,9 @@ def test_an_artifact_record_names_a_real_artifact(sha):
         _artifact_record(artifact_id=sha)
 
 
-@pytest.mark.xfail(strict=True, raises=TypeError,
-                   reason="entities.py:1332, same leak as entities.py:1050 and 1232: the "
-                          "digest guards hand `_HEX64.fullmatch` whatever the row held. A "
-                          "NULL artifact_id is a TypeError, while Artifact.id "
-                          "(entities.py:98-99) is caught as a ValueError by the shared walk")
 def test_an_artifact_record_digest_that_is_not_a_string_is_refused_as_a_value_error():
-    _artifact_record(artifact_id=7)
+    with pytest.raises(ValueError):
+        _artifact_record(artifact_id=7)
 
 
 def test_an_artifact_record_is_produced_by_one_execution():
@@ -1270,10 +1260,6 @@ def test_a_utilisation_that_is_not_a_reading_is_refused(pct):
         _snapshot(utilisation_pct=pct)
 
 
-@pytest.mark.xfail(strict=True, reason="UsageSnapshot._check (entities.py:1578) forgets the "
-                                       "`not isinstance(v, bool)` the ledger's own figure check "
-                                       "has (entities.py:1620): `utilisation_pct=True` is stored "
-                                       "as 1% and `False` as 0%, an account wide open")
 def test_a_utilisation_that_is_a_bool_is_refused():
     """entities.py:1578: `isinstance(True, int)` is True, so `True` passes as a
     100%-used window and `False` as an empty one -- the `_NONNEG` walk

@@ -289,12 +289,6 @@ def test_decided_plan_version_is_a_plan_version_or_nothing(v, ok):
 @pytest.mark.parametrize('origin, kind', [
     ('conversation', 'idea'), ('idea', 'message'), ('automation', 'message'),
 ], ids=['conversation-carries-an-idea', 'idea-carries-a-message', 'automation-carries-a-msg'])
-@pytest.mark.xfail(strict=True, reason='SOURCE BUG: entities.py:690-691 admits any of '
-                                       'message|idea|automation_run for EVERY origin. '
-                                       'ORIGIN_REF_KIND (entities.py:677-679) is declared, '
-                                       'documented at entities.py:697-699 and read by the '
-                                       'graph (infra/graph/graph.py:146-147), but '
-                                       'Mission._check never compares origin_ref to it')
 def test_an_origin_ref_is_the_id_kind_its_origin_names(origin, kind):
     """entities.py:677-679 + 691: a mission that came from a conversation
     cannot have started from an idea. graph.py emits the `started_from` edge as
@@ -753,13 +747,6 @@ def test_a_plans_round_seq_is_an_event_seq(value, ok):
             _plan(round_seq=value)
 
 
-@pytest.mark.xfail(strict=True, reason='SOURCE BUG: entities.py:852-853 tests only '
-                                       'isinstance(int) and the bound. Unlike every '
-                                       '_MIN1/_NONNEG field (entities.py:128-132) and '
-                                       'unlike Mission.decided_plan_version '
-                                       '(entities.py:768-770), Plan.round_seq accepts a '
-                                       'bool, so True is stored as the seq of the '
-                                       'planning round')
 def test_a_plans_round_seq_is_not_a_bool():
     """entities.py:852-854: `True` is an int that passes `>= 1` and is not an event
     seq -- the row would point every replan at the mission's first event, the one

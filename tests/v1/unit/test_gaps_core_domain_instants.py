@@ -405,11 +405,6 @@ def test_the_module_touches_no_clock_no_zone_and_no_lenient_text():
             assert 'Exception' not in names and 'BaseException' not in names
 
 
-@pytest.mark.xfail(strict=True, raises=TypeError,
-                   reason='instants.py:46 compares with `now` unguarded: ahead(text, None) '
-                          'raises TypeError instead of answering no wait, and resources.py:613 '
-                          'hands it exactly that None when a recorded snapshot has no readable '
-                          '`now`')
 def test_ahead_judged_at_no_instant_at_all_is_no_wait():
     """instants.py:46, the `now` side of `None if at <= now else _written(at)`.
 
