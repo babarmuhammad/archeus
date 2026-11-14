@@ -63,7 +63,7 @@ def lessons(conn, mission_id):
             (mission_id,))):
         # ponytail: expired relations count against the scan cap; a valid_until column if that ever costs
         if n == LESSONS_SCAN_MAX:
-            return found[:LESSONS_MAX], True
+            return found, True
         try:
             body = json.loads(r['body'])
         except (ValueError, RecursionError):  # the schema admits any TEXT: a bad body is skipped, not fatal
