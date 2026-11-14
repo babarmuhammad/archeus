@@ -397,7 +397,8 @@ def install_skill(src_dir, dest_root):
     "everywhere" must not have to know which one that is."""
     if not src_dir or not dest_root or not os.path.isfile(skill_md(src_dir)):
         return ''
-    dest = os.path.join(dest_root, os.path.basename(src_dir))
+    # normpath: a trailing separator gives basename '' and dest == dest_root, which the rmtree below wipes
+    dest = os.path.join(dest_root, os.path.basename(os.path.normpath(src_dir)))
     try:
         os.makedirs(dest_root, exist_ok=True)
         if os.path.isdir(dest):
@@ -545,7 +546,7 @@ def delete_personal(skill_dir, all_accounts=True):
     The other half of the fan-out: installing everywhere and deleting in one
     place turns "installed" into "installed in four places you forgot about".
     """
-    base = os.path.basename(skill_dir)
+    base = os.path.basename(os.path.normpath(skill_dir))
     gone = []
     for name, root in (_harnesses.skill_roots() if all_accounts
                        else [('', personal_dir())]):
@@ -558,7 +559,7 @@ def delete_personal(skill_dir, all_accounts=True):
 def personal_accounts(skill_dir):
     """Which accounts and CLIs already have a personal skill by this name —
     what the confirmation dialog needs in order to say what it is about to do."""
-    base = os.path.basename(skill_dir)
+    base = os.path.basename(os.path.normpath(skill_dir))
     return [name for name, root in _harnesses.skill_roots()
             if os.path.isfile(skill_md(os.path.join(root, base)))]
 
