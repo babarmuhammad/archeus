@@ -263,7 +263,7 @@ def import_meeting(tx, *, actor, name, held_at, notes_sha256, notes_size, import
     if held_at is not None:
         try:
             datetime.fromisoformat(held_at.replace('Z', '+00:00'))
-        except (TypeError, ValueError):
+        except (AttributeError, TypeError, ValueError):
             raise ValueError('held_at is an ISO date or time: %r' % (held_at,)) from None
     workspace = ids.GLOBAL_WORKSPACE
     if project_id is not None:

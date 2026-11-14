@@ -160,7 +160,8 @@ def held_edges(conn, kind, e):
         if e.depends_on:
             by_key = {r.entity.key: r.entity.id for r in rows.where(conn, E.Task, plan_id=e.plan_id)}
             for k in e.depends_on:
-                _edge(out, me, 'Task.depends_on', 'task', by_key.get(k))
+                if isinstance(k, str):
+                    _edge(out, me, 'Task.depends_on', 'task', by_key.get(k))
     elif kind == 'execution':
         _edge(out, me, 'executions.task_id', 'task', e.task_id)
         _edge(out, me, 'executions.mission_id', 'mission', e.mission_id)
@@ -475,7 +476,11 @@ def repository_graph(conn, repository_id, read, focus='', depth=1, limit=LIMIT_D
             log.warning('repository %s: its stored inspection payload %s is missing',
                         r.id, i.payload_sha256)
         return dict(base, available=False, reason='payload_missing')
-    return dict(base, available=True, **_tree(payload, focus, depth, limit),
+    try:
+        tree = _tree(payload, focus, depth, limit)
+    except (AttributeError, TypeError, ValueError):
+        return dict(base, available=False, reason='payload_missing')
+    return dict(base, available=True, **tree,
                 revision=i.revision, inspected_at=i.inspected_at,
                 extractor_version=i.extractor_version,
                 extractor_truncated=bool(payload.get('truncated')),

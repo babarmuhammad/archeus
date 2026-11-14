@@ -370,10 +370,6 @@ def test_a_dependency_that_names_no_task_emits_no_edge(db, actor):
     assert ('task', t2.id) in keys(back)                      # end of the dependency
 
 
-@pytest.mark.xfail(strict=True, raises=TypeError,
-                   reason='graph.py:163 feeds every entry of Task.depends_on to a dict lookup: '
-                          'a mapping (or list) in the stored list raises TypeError out of an '
-                          'observe read instead of holding no edge')
 def test_a_dependency_that_holds_a_mapping_is_not_an_edge_and_not_a_crash(db, actor):
     """The same list, the one entry a JSON body can hold that the reader cannot:
     A4 says nothing here ranks, infers or raises."""
@@ -606,11 +602,6 @@ def test_a_payload_that_cannot_be_read_is_payload_missing_and_logged_once_per_sh
         assert any(sha in s for s in said), sha
 
 
-@pytest.mark.xfail(strict=True, raises=AttributeError,
-                   reason='repository_graph/_tree trust the stored blob: valid JSON of the '
-                          'wrong shape raises AttributeError out of an observe read instead of '
-                          'answering available=False, reason=payload_missing like an unreadable '
-                          'one does')
 def test_a_payload_that_is_not_an_object_is_refused_like_an_unreadable_one(db, actor):
     """A5's contract is that a payload Core cannot use is *said*, not raised: the
     catch around `_payload` names OSError, KeyError, ValueError and LookupError."""
@@ -621,10 +612,6 @@ def test_a_payload_that_is_not_an_object_is_refused_like_an_unreadable_one(db, a
     assert g['available'] is False and g['reason'] == 'payload_missing'
 
 
-@pytest.mark.xfail(strict=True, raises=(TypeError, ValueError, AttributeError),
-                   reason='graph._tree unpacks payload["edges"] blindly: an edge row that is not '
-                          'a pair raises ValueError/TypeError out of an observe read instead of '
-                          'answering available=False')
 def test_payload_edges_of_the_wrong_shape_are_refused_like_an_unreadable_one(db, actor):
     """The same contract one level in: `edges` is the payload's own list."""
     prj = a_project()

@@ -501,10 +501,6 @@ def test_a_cut_event_window_says_it_was_cut(db_world, monkeypatch):
     assert t['truncated'] is False
 
 
-@pytest.mark.xfail(strict=True, reason='trace.py:59: `rs[-MAX_EXECUTIONS:]` is the WHOLE list '
-                                       'when MAX_EXECUTIONS is 0 (rs[-0:] is rs[0:]): a zero cap '
-                                       'must read nothing (fail closed), not everything, and the '
-                                       'bounded-read comment above the constant asks for it')
 def test_a_zero_cap_on_executions_reads_none(db_world, monkeypatch):
     db, who = db_world
     seeds, wanted = _three_execs()

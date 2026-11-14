@@ -584,10 +584,6 @@ def test_a_harness_nobody_offered_is_a_sentence_rather_than_a_directive(make):
     assert r.one(entities.Mission, m.id).resource_preferences is None
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="conversation.directive pluralises 'harness' to 'harnesss', so "
-                          "the preference key no Mission holds is written and the whole "
-                          "control verb dies on KeyError before anything is recorded")
 def test_a_harness_named_in_the_words_is_the_mission_s_own_preference(make):
     # The obeyed turn above, to the end: the directive is recorded against the message
     # and the intent that asked for it, with no model in between. (The worker's part —
