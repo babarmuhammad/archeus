@@ -248,7 +248,8 @@ def test_journal_is_created_private(tmp_path, monkeypatch):
     seen = []
 
     def fake(path, text, **kwargs):
-        seen.append((os.path.basename(str(path)), text, kwargs.get('mode')))
+        if not str(path).endswith('.anchor'):
+            seen.append((os.path.basename(str(path)), text, kwargs.get('mode')))
         return real(path, text, **kwargs)
 
     monkeypatch.setattr(ledger.config, 'write_atomic', fake)

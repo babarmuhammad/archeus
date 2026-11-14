@@ -149,6 +149,11 @@ def rewrite_journal(env, name, pid, create_time):
         data = stream.read()
     with open(env.ledger._path(name), 'wb') as stream:
         stream.write(data)
+    # the anchor follows the bytes, so this reaches the pair check rather than the anchor
+    with open(scratch._anchor_path(name), 'rb') as stream:
+        anchor = stream.read()
+    with open(env.ledger._anchor_path(name), 'wb') as stream:
+        stream.write(anchor)
 
 
 def events(env):

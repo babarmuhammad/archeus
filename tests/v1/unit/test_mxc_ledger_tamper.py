@@ -49,10 +49,11 @@ ROWS = chained([
     {'execution_id': 'e1', 'op': 'completion', 'seq': 3, 'outcome': 0},
 ])
 LINES = [ledger._line(r) for r in ROWS]
+ANCHOR = (4, hashlib.sha256(LINES[3]).hexdigest())
 
 
-def read(data, eid='e1'):
-    return ledger.read_records(data, eid)
+def read(data, eid='e1', anchor=None):
+    return ledger.read_records(data, eid, anchor)
 
 
 def edited(i, **fields):
@@ -173,11 +174,7 @@ def test_a_torn_tail_is_detected():
 @pytest.mark.parametrize('data', [
     journal(LINES[0], edited(1, pid=42), LINES[2], LINES[3]),
     journal(edited(0, planned=['x']), LINES[1], LINES[2], LINES[3]),
-    pytest.param(journal(LINES[0], LINES[1], LINES[2], edited(3, outcome=9)),
-                 marks=pytest.mark.xfail(strict=True, reason="the last record has no successor "
-                                         "to carry its hash, so an edit to it under a fresh sha "
-                                         "is not detected by the chain alone "
-                                         "(archeus/node/mxc_ledger.py:_prev)")),
+    journal(LINES[0], LINES[1], LINES[2], edited(3, outcome=9)),
 ], ids=['pid42', 'planned', 'outcome9'])
 def test_gap_an_edited_field_with_a_fresh_sha_is_not_detected(data):
     """Branch: none — that is the gap. `_line` (mxc_ledger.py:39-42) seals the record
@@ -186,14 +183,9 @@ def test_gap_an_edited_field_with_a_fresh_sha_is_not_detected(data):
     intent's `requested_policy_digest` (mxc_ledger.py:60) but nothing binds `planned`,
     `pid`, `create_time`, `owned` or `outcome`. Today each of these reads
     `(<rows with the edit>, False)`; a tamper-evident reader must say invalid is True."""
-    assert read(data)[1] is True
+    assert read(data, anchor=ANCHOR)[1] is True
 
 
-@pytest.mark.xfail(strict=True, reason="a deleted last line is not detected: read_records "
-                   "checks each line against itself and 'seq' against the count of accepted "
-                   "lines (archeus/node/mxc_ledger.py:85-106) and has no rule that a finished "
-                   "journal ends in completion; nothing chains the lines "
-                   "(archeus/node/mxc_ledger.py:152)")
 def test_gap_a_deleted_last_line_is_not_detected():
     """Branch: none — the second gap. `read_records` (mxc_ledger.py:85-106) has no
     rule about what a finished journal looks like: the completion is only checked if
@@ -201,4 +193,27 @@ def test_gap_a_deleted_last_line_is_not_detected():
     with no chain (mxc_ledger.py:152) a journal truncated by one whole line is a
     perfect copy of a run that has not finished. A tamper-evident reader must say
     invalid is True; today this reads (ROWS[:3], False)."""
-    assert read(journal(*LINES[:3]))[1] is True
+    assert read(journal(*LINES[:3]), anchor=ANCHOR)[1] is True
+
+
+@pytest.mark.parametrize('lines,anchor,invalid', [
+    (LINES, ANCHOR, False),
+    (LINES, (3, hashlib.sha256(LINES[2]).hexdigest()), False),
+    (LINES[:3], ANCHOR, True),
+], ids=['anchor-current', 'crash-after-a-line-before-its-anchor', 'removed-last-line'])
+def test_anchor_accepts_one_unanchored_line_and_refuses_a_missing_one(lines, anchor, invalid):
+    assert read(journal(*lines), anchor=anchor)[1] is invalid
+
+
+def test_ledger_refuses_an_edited_anchored_line_and_accepts_one_unanchored_line(tmp_path):
+    led = ledger.Ledger(tmp_path)
+    led.append('e1', 'intent', requested_policy_digest=DIGEST, planned=[], applied=[],
+               observed={})
+    led.append('e1', 'ownership', pid=41, create_time=900, requested_policy_digest=DIGEST,
+               applied=[], observed={}, owned=[])
+    good = (tmp_path / 'e1.jsonl').read_bytes()
+    assert led.journals()['e1'] == good
+    (tmp_path / 'e1.jsonl').write_bytes(LINES[0] + edited(1, pid=42))
+    assert led.journals()['e1'] == b'invalid\n'
+    (tmp_path / 'e1.jsonl').write_bytes(good + LINES[2])
+    assert read(led.journals()['e1'])[1] is False
