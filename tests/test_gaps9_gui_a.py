@@ -124,9 +124,6 @@ def test_a_non_numeric_context_tokens_is_a_value_error():
         gui._clean_profile(_body(context_tokens='abc'))
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/gui.py:220 body id overrides prev id in _clean_profile; "
-    "latent, because _api_provider_save (gui.py:246) looks prev up by the same body id"))
 def test_an_edit_keeps_the_stored_id_when_the_body_names_another():
     prof = gui._clean_profile(_body(id='new'), {'id': 'old', 'port': 3})
     assert prof['id'] == 'old'
