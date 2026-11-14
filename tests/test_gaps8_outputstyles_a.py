@@ -130,7 +130,7 @@ def test_save_failed_write_returns_path_and_no_success(monkeypatch, tmp_path):
     assert not os.path.exists(expected)
 
 
-def test_delete_removes_user_match_first_and_keeps_project_copy(tmp_path):
+def test_delete_removes_project_match_first_and_keeps_user_copy(tmp_path):
     proj = _proj(tmp_path)
     cfg = _cfg(tmp_path)
     user_file = os.path.join(cfg, 'output-styles', 'Mine.md')
@@ -141,8 +141,27 @@ def test_delete_removes_user_match_first_and_keeps_project_copy(tmp_path):
             fh.write('---\nname: Mine\n---\n\nbody\n')
 
     assert outputstyles.delete('Mine', proj, cfg) == (True, 'Deleted Mine')
-    assert not os.path.exists(user_file)
-    assert os.path.isfile(proj_file)
+    assert not os.path.exists(proj_file)
+    assert os.path.isfile(user_file)
+
+
+def test_read_takes_the_project_copy_over_the_user_one(tmp_path):
+    proj = _proj(tmp_path)
+    cfg = _cfg(tmp_path)
+    for base, text in ((os.path.join(cfg, 'output-styles'), 'user body'),
+                       (os.path.join(proj, '.claude', 'output-styles'), 'project body')):
+        os.makedirs(base, exist_ok=True)
+        with open(os.path.join(base, 'Mine.md'), 'w', encoding='utf-8') as fh:
+            fh.write('---\nname: Mine\n---\n\n' + text + '\n')
+    assert outputstyles.read('Mine', proj, cfg) == 'project body'
+
+
+@pytest.mark.parametrize('name', ['Explanatory', 'explanatory', 'LEARNING'])
+def test_save_refuses_a_builtin_name_in_any_casing(tmp_path, name):
+    cfg = _cfg(tmp_path)
+    ok, msg = outputstyles.save(name, 'd', 'body', None, cfg)
+    assert ok is False and 'built-in' in msg
+    assert not os.path.exists(os.path.join(cfg, 'output-styles'))
 
 
 def test_delete_oserror_returns_its_text_and_keeps_file(monkeypatch, tmp_path):

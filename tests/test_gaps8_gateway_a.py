@@ -6,7 +6,7 @@ _Handler.do_POST. Selected branches, denial and fail-closed first:
   475-476  guard refusal returns before the body is read, parsed or routed
   469-470  GET guard refusal writes no 404; the readiness marker returns before the guard
   498-502  missing or refused upstream target answers 502 and calls no upstream
-  480-481  a non-integer Content-Length counts as zero and reads no bytes
+  480-481  a non-integer or negative Content-Length is a 400 that closes the connection
   484-487  a non-JSON body answers 400 and calls no upstream
   494-496  an unsupported path answers 404 without a target check
   489-493  count_tokens answers locally with the estimate
@@ -134,11 +134,15 @@ def test_a_missing_or_refused_target_fails_closed_with_a_502(routed, monkeypatch
     assert routed == []
 
 
-def test_a_non_numeric_content_length_reads_nothing_and_is_an_empty_body(routed):
-    h = _handler(body=b'{"stream": true}', length='abc')
+@pytest.mark.parametrize('length', ['abc', '-1'])
+def test_a_bad_content_length_is_a_400_that_reads_nothing_and_closes(routed, length):
+    h = _handler(body=b'{"stream": true}', length=length)
     h.do_POST()
-    assert h.rfile.reads == []
-    assert routed == [('once', {})]
+    status, obj = _sent(h)
+    assert status == 400
+    assert obj['error']['type'] == 'invalid_request_error'
+    assert h.rfile.reads == [] and routed == []
+    assert h.close_connection is True
 
 
 def test_a_non_json_body_is_a_400_and_reaches_no_upstream(routed):

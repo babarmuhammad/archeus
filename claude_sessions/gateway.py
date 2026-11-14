@@ -477,8 +477,13 @@ class _Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlsplit(self.path).path
         try:
             length = int(self.headers.get('Content-Length') or 0)
+            if length < 0:
+                raise ValueError(length)
         except ValueError:
-            length = 0
+            # the body was not read, so its bytes would open the next request
+            self.close_connection = True
+            return _proxy.write_json(self, 400, {'type': 'error', 'error': {
+                'type': 'invalid_request_error', 'message': 'bad Content-Length'}}) and None
         raw = self.rfile.read(length) if length else b''
         try:
             body = json.loads(raw.decode('utf-8', 'replace') or '{}')

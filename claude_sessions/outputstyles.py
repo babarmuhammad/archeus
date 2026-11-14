@@ -104,7 +104,8 @@ _FM = re.compile(r'^---\s*\n(.*?)\n---\s*\n?', re.S)
 
 
 def _dirs(project_path=None, cfgdir=None):
-    """[(scope, dir)] — user first, project second (project wins in the UI)."""
+    """[(scope, dir)] — user first, project second (project wins: listing marks
+    it active, read and delete take it first)."""
     out = [('user', os.path.join(cfgdir or _c.config_dir, 'output-styles'))]
     if project_path:
         out.append(('project',
@@ -234,7 +235,7 @@ def read(name, project_path=None, cfgdir=None):
     disk, so `view` rendered "(empty)" on the three styles most people have and
     read as a dead button."""
     slug = _slug(name)
-    for _scope, d in _dirs(project_path, cfgdir):
+    for _scope, d in reversed(_dirs(project_path, cfgdir)):
         for fn in (f'{slug}.md', f'{slug.lower()}.md'):
             p = os.path.join(d, fn)
             if os.path.isfile(p):
@@ -273,11 +274,17 @@ def active_scope(project_path=None, cfgdir=None):
     return ''
 
 
+def _builtin(name):
+    return (name or '').casefold() in [n.casefold() for n, _d in BUILTIN]
+
+
 def save(name, description, body, project_path=None, cfgdir=None):
     """Create or overwrite a custom style."""
     slug = _slug(name)
     if not slug:
         return False, 'A name is required'
+    if _builtin(name):
+        return False, f'{name} is a built-in style: pick another name'
     scope_dir = _dirs(project_path, cfgdir)[-1 if project_path else 0][1]
     path = os.path.join(scope_dir, f'{slug}.md')
     text = (f'---\nname: {_one_line(name)}\ndescription: {_one_line(description)}\n---\n\n'
@@ -289,10 +296,10 @@ def save(name, description, body, project_path=None, cfgdir=None):
 
 def delete(name, project_path=None, cfgdir=None):
     """Remove a custom style. Built-ins are not on disk and cannot go."""
-    if (name or '').casefold() in [n.casefold() for n, _d in BUILTIN]:
+    if _builtin(name):
         return False, f'{name} ships with Claude Code — nothing to delete'
     slug = _slug(name)
-    for _scope, d in _dirs(project_path, cfgdir):
+    for _scope, d in reversed(_dirs(project_path, cfgdir)):
         p = os.path.join(d, f'{slug}.md')
         if os.path.isfile(p):
             try:
