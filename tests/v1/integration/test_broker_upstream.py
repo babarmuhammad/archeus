@@ -97,7 +97,8 @@ def make(port, live=lambda b, d: True):
     up = B.Upstream('http://127.0.0.1:%d' % port, 'provider_proxy')
     creds = {'x-api-key': 'sk-ant-api03-K'}
     b = B.Broker(core_instance='c1', live=live, credentials=lambda bd: creds,
-                 upstream_of=lambda a: up, transport=Transport())
+                 upstream_of=lambda a: up, transport=Transport(),
+                 limits=B.BrokerLimits(max_requests=10))
     bd = B.BrokerBinding(core_instance='c1', execution_id='exe_1', process_seq=1,
                          principal='p', route_decision_id='rte_1', account_id='acc_1',
                          harness_id='claude_code', model=MODEL, upstream=up,
@@ -169,7 +170,8 @@ def test_an_unreachable_upstream_is_one_502_never_a_retry():
 
 def test_a_proxy_that_is_not_loopback_gets_no_grant():
     b = B.Broker(core_instance='c1', live=lambda *a: True, credentials=lambda bd: {},
-                 upstream_of=None, transport=Transport())
+                 upstream_of=None, transport=Transport(),
+                 limits=B.BrokerLimits(max_requests=1))
     bd = B.BrokerBinding(core_instance='c1', execution_id='exe_1', process_seq=1, principal='p',
                          route_decision_id='r', account_id='a', harness_id='claude_code',
                          model=MODEL, upstream=B.Upstream('http://10.1.2.3:8080',

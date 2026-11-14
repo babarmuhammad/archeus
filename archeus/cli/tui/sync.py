@@ -117,7 +117,8 @@ def _s(v):
 
 def explain(r):
     """Core's refusal in words, from its own code and detail."""
-    d = r.get('detail') or {}
+    d = r.get('detail')
+    d = d if isinstance(d, dict) else {}
     code = r['code']
     if code == 'scope_required':
         return 'This client does not hold the “%s” scope.' % _s(d.get('scope'))

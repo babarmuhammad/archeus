@@ -210,6 +210,7 @@ class Rig:
             self.sent.append((method, path, dict(headers), body))
             return Resp()
 
+        kw.setdefault('limits', B.BrokerLimits(max_requests=5))
         self.broker = L.loopback_broker(
             backend_of=lambda port: self.backend, principal_of=principal_of,
             bind=bind or default_bind, core_instance='core1',

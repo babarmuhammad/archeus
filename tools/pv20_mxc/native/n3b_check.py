@@ -122,7 +122,8 @@ class Harness(n2.Harness):
             core_instance='fixture_core', live=lambda binding, digest: True,
             credentials=lambda binding: {'x-api-key': 'sk-ant-api03-FIXTURE_ONLY'},
             upstream_of=lambda account: self.p.broker.Upstream(
-                'http://127.0.0.1:1', 'provider_proxy'), send=self.send)
+                'http://127.0.0.1:1', 'provider_proxy'),
+            limits=self.p.broker.BrokerLimits(max_requests=5), send=self.send)
 
     def backend(self, port):
         readers = self.p.origin_native.native_readers(

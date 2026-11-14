@@ -250,7 +250,7 @@ def _loopback(backend_of, bind):
     t = L.LoopbackTransport(
         backend_of=backend_of, principal_of=lambda evidence: 'archeus.x', bind=bind,
         broker_options=dict(core_instance='core1', live=lambda bd, d: True,
-                            credentials=lambda bd: {},
+                            credentials=lambda bd: {}, limits=B.BrokerLimits(max_requests=3),
                             upstream_of=lambda a: B.Upstream('https://api.example.com'),
                             resolve=lambda host, port: ['93.184.216.34']))
     return t, t.broker

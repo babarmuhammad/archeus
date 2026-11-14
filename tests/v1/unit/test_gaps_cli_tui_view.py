@@ -174,11 +174,6 @@ def test_every_bidi_control_character_is_removed(ch):
     assert clean('\u05e2' + ch + 'ok') == '\u05e2ok'            # text kept
 
 
-@pytest.mark.xfail(strict=True, reason='view.py:32 leaves the interlinear annotation '
-                                       'marks U+FFF9..FFFB (Unicode Cf, the VT '
-                                       '"invisible text" mechanism) in Core text, so a '
-                                       'title can carry text a terminal hides, which the '
-                                       'module docstring promises can never happen')
 def test_the_annotation_marks_that_hide_text_are_removed():
     # the three marks go; the visible text between them stays
     assert clean('a\uFFF9hidden\uFFFBb') == 'ahiddenb'
@@ -407,10 +402,6 @@ def test_the_truncation_mark_is_ascii_on_an_ascii_terminal():
     assert Style(False, 'dark', False).line('\u6c49' * 5, 5) == '\u6c49\u6c49\u2026'
 
 
-@pytest.mark.xfail(strict=True, reason='view.py:113 render.fit(trunc) returns the '
-                                       'one-column mark \u2026 for width <= 0, so '
-                                       'Style.line\'s promise of "exactly *width* '
-                                       'columns" is broken at the zero boundary')
 def test_a_line_of_zero_width_is_empty():
     assert width_of(Style(False, 'dark', False).line('abc', 0)) == 0
     assert width_of(Style(False, 'dark', True).line('abc', 0)) == 0

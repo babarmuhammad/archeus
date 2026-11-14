@@ -265,12 +265,6 @@ def test_an_error_body_that_names_no_code_falls_back_and_never_keeps_a_falsy_det
     assert err['detail'] == detail
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='client.py:51-53 guards the shape of the answer body but passes '
-                          'body.get("detail") through unguarded, and sync.explain dereferences '
-                          'it (d.get("field") for an invalid_request, archeus/cli/tui/sync.py:120 '
-                          'and 152), so an answer body naming a plain-string detail crashes the '
-                          'code that shows the refusal instead of showing it')
 def test_the_refusal_the_status_line_prints_is_built_from_a_detail_of_the_right_shape(opener):
     """client.py:51-53 — the body's shape is guarded (`isinstance(body, dict)`) but
     `detail` is not, and `sync.explain` dereferences it (`d.get('field')` for
@@ -301,13 +295,6 @@ def test_a_transport_failure_is_the_network_refusal_and_names_itself_without_the
     assert TOKEN not in repr((str(e.value), e.value.detail, e.value.refusal()))
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='client.py:89 catches URLError and OSError only, so an '
-                          'http.client exception from a broken answer (BadStatusLine, '
-                          'RemoteDisconnected before the headers) escapes Core.get/post as '
-                          'a raw transport error instead of the (0, network) refusal every '
-                          'caller catches; Stream catches it at line 172, the read path '
-                          'does not')
 def test_an_http_layer_break_on_a_read_is_a_network_refusal_too(opener):
     """client.py:89 — the read path must answer with Core's bytes or with a refusal."""
     opener(http.client.BadStatusLine('garbage on the wire'))
@@ -371,11 +358,6 @@ def test_the_event_head_is_a_number_or_nothing_at_all(opener, seq, want):
     assert data == {'missions': []} and type(head) is type(want) and head == want
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='client.py:96 does int(seq) unguarded, so a head Core did not '
-                          'write as a number (a duplicated header reads as "3, 5") raises '
-                          'ValueError out of the read instead of arriving as a refusal; '
-                          'every caller of get() catches CoreError and nothing else')
 def test_a_malformed_event_head_is_a_refusal_not_a_crash(opener):
     """client.py:95-96 — a malformed head is a broken answer, and a broken answer
     is a refusal in this module everywhere else: `get()` answers with Core's bytes

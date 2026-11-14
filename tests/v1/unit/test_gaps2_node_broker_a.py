@@ -114,6 +114,7 @@ def broker(send=None, transport=None, resolve=None, **kw):
         calls.append((up, addrs, method, path, dict(headers), body))
         return Resp(headers=[('content-type', 'application/json'), ('request-id', 'r1')])
 
+    kw.setdefault('limits', B.BrokerLimits(max_requests=3))
     b = B.Broker(core_instance='core1',
                  live=lambda bd, d: True,
                  credentials=lambda bd: {'x-api-key': UPSTREAM_KEY},
@@ -155,12 +156,6 @@ def nothing_happened(t, b, calls):
 
 # ── 1-2. the two refusals the source does not (yet) make: reported, kept strict ──
 
-@pytest.mark.xfail(strict=True, reason='broker.py:278 keeps `limits or BrokerLimits()` but '
-                                       'broker.py:290-301 validates only binding.limits: '
-                                       'Broker.limits is never read anywhere in archeus/, so a '
-                                       'broker composed without Core policy issues a grant even '
-                                       'though the Broker docstring (broker.py:270-271) promises '
-                                       '"a broker made without one issues nothing"')
 def test_a_broker_composed_without_cores_policy_issues_nothing():
     t = Transport()
     b, calls = broker(transport=t, limits=None)
@@ -171,12 +166,6 @@ def test_a_broker_composed_without_cores_policy_issues_nothing():
     assert t.created == [] and t.launched == [] and b._grants == {} and calls == []
 
 
-@pytest.mark.xfail(strict=True, reason='broker.py:165 `u = urlsplit(up.url)` itself raises '
-                                       'ValueError("Invalid IPv6 URL") for a malformed IPv6 '
-                                       'literal, and only the `u.port` read at broker.py:167 is '
-                                       'wrapped, so check_destination dies with ValueError '
-                                       'instead of Refused(403): a malformed provider URL is an '
-                                       'unhandled crash of issue(), not a denial')
 @pytest.mark.parametrize('url', ['http://[::1:8080', 'https://[::1:8080'],
                          ids=['proxy-bracket', 'https-bracket'])
 def test_a_url_the_parser_itself_cannot_read_is_a_denial_that_creates_nothing(url):

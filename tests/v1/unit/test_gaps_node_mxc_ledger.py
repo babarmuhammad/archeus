@@ -326,14 +326,12 @@ def test_unreadable_journal_becomes_invalid_marker(journal):
         'e1': ledger.DEAD_UNVERIFIED, 'bad': ledger.DEAD_UNVERIFIED}
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='_validate fails open on an unrecognized op: a record with '
-                          'only the base fields (execution_id/op/seq) passes validation')
 def test_validate_rejects_unknown_op():
     # mxc_ledger.py:26-59 — no elif arm and no op-membership check, so an unknown op
     # with bare fields returns quietly. Public paths guard it (read_records:79,
     # append:174), but _validate itself must fail closed for any future caller.
-    assert ledger._validate({'execution_id': 'e1', 'op': 'advance', 'seq': 0}, []) is not None
+    with pytest.raises(ValueError):
+        ledger._validate({'execution_id': 'e1', 'op': 'advance', 'seq': 0}, [])
 
 
 def test_complete_rejects_bool_outcome(journal):

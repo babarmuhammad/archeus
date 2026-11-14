@@ -74,6 +74,8 @@ def _validate(record, previous):
         fields.add('reason')
         if not isinstance(record['reason'], str) or not record['reason']:
             raise ValueError('invalid quarantine')
+    else:
+        raise ValueError('unknown op')
     if set(record) != fields:
         raise ValueError('invalid record fields')
     if 'requested_policy_digest' in record:

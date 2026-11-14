@@ -126,6 +126,7 @@ def broker(live=True, send=None, transport=None, resolve=None, credentials=None,
     def recording(up, addrs, method, path, headers, body, timeout):
         calls.append((up, addrs, method, path, dict(headers), body))
         return (send or default_send)(up, addrs, method, path, headers, body, timeout)
+    kw.setdefault('limits', B.BrokerLimits(max_requests=3))
     b = B.Broker(core_instance='core1',
                  live=live if callable(live) else (lambda bd, d: live),
                  credentials=credentials or (lambda bd: {'x-api-key': UPSTREAM_KEY}),

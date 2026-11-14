@@ -39,7 +39,7 @@ def rig(tmp_path, monkeypatch):
         core_instance='fixture_core', live=lambda b, d: True,
         credentials=lambda b: {'x-api-key': 'sk-ant-api03-FIXTURE_ONLY'},
         upstream_of=lambda a: broker.Upstream('http://127.0.0.1:1', 'provider_proxy'),
-        send=h.send)
+        limits=broker.BrokerLimits(max_requests=5), send=h.send)
     starts = []
 
     def start(tag, argv, *, port=None, principal=None):
