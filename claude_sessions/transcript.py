@@ -210,7 +210,7 @@ def export_transcript(proj_folder, sid, project_path):
     stats = get_session_stats_cached(jsonl)
     name  = load_name(proj_folder, sid)
 
-    title = name or stats.get('title') or sid[:8]
+    title = render.strip_ansi(name or stats.get('title') or sid[:8])
     out = [f"# Claude session — {title}", '']
     out += ['- ' + render.strip_ansi(l) for l in metadata_lines(stats, name, sid, plain=True)]
     out += ['', '---', '']
@@ -220,18 +220,21 @@ def export_transcript(proj_folder, sid, project_path):
         out.append(m['text'])
         out.append('')
 
-    fname = f"claude-session-{_slug(title)}.md"
     target_dir = project_path if (project_path and os.path.isdir(project_path)
                                   and os.access(project_path, os.W_OK)) else proj_folder
-    fpath = os.path.join(target_dir, fname)
-    if os.path.exists(fpath):
-        stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-        fpath = os.path.join(target_dir, f"claude-session-{_slug(title)}-{stamp}.md")
-
-    try:
-        with open(fpath, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(out) + '\n')
-    except Exception as e:
-        return False, f"Export failed: {e}"
+    base = os.path.join(target_dir, f"claude-session-{_slug(title)}")
+    stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    for fpath in [base + '.md', f'{base}-{stamp}.md'] + [f'{base}-{stamp}-{n}.md' for n in range(2, 100)]:
+        try:
+            # 'x' creates or fails: an existing export is never overwritten
+            with open(fpath, 'x', encoding='utf-8') as f:
+                f.write('\n'.join(out) + '\n')
+            break
+        except FileExistsError:
+            continue
+        except Exception as e:
+            return False, f"Export failed: {e}"
+    else:
+        return False, 'Export failed: every file name is taken'
     open_in_editor(fpath)
     return True, f"Exported {os.path.basename(fpath)}"
