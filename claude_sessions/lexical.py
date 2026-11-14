@@ -58,9 +58,10 @@ def idf(df, n):
     The old `log(1 + n/df)` never reaches zero — it is >= log(2) ~ 0.69 even for
     a token present in EVERY document — and the only gate downstream was
     `score > 0`, so `idf('the')` measured 2.08 on the live graph and the query
-    "the" alone returned 33 entities. This form goes negative for a term more
-    than half the corpus contains, which is what makes "does this word
-    distinguish anything" answerable at all."""
+    "the" alone returned 33 entities. This is the Lucene form: it stays
+    positive, but a term in every document weighs far less than a rare one.
+    The classic form, which goes to zero or below, was tried and rejected
+    (owner, 14 Nov 2026): on a small store it leaves recall with nothing."""
     n = max(1, n)
     return {tok: math.log(1 + (n - c + 0.5) / (c + 0.5)) for tok, c in df.items()}
 

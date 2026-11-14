@@ -288,18 +288,9 @@ def test_a_non_string_input_fails_loudly_rather_than_scoring_nothing(query, docs
         bm25.normalised(query, docs)
 
 
-@pytest.mark.xfail(strict=True, reason='lexical.py:64 — idf() is documented to go '
-                   '"negative for a term more than half the corpus contains", which is '
-                   'the fail-closed gate that would make "does this word distinguish '
-                   'anything" answerable; math.log(1 + (n - c + 0.5) / (c + 0.5)) is '
-                   'always > 0 for c <= n, so a word present in EVERY document still '
-                   'scores and is normalised to 1.0. Source fix, not a test fix.')
-def test_a_word_present_in_every_document_is_worth_nothing():
-    """The gate itself: with 'common' in all five documents it distinguishes
-    nothing, so per the idf docstring the query 'common' alone must retrieve
-    nothing — exactly the shape of the recorded "the" returned 33 entities bug.
-    Today every document comes back at 1.0 (lexical.py:64/82)."""
-    docs = {str(i): 'common w%d' % i for i in range(5)}
-    res = bm25.normalised('common', docs)
-    assert scores(res) == {str(i): 0.0 for i in range(5)}
-    assert all(v == [] for v in matched(res).values())
+def test_a_word_present_in_every_document_weighs_far_less_than_a_rare_one():
+    """The Lucene idf is kept on purpose (owner, 14 Nov 2026): a word in every
+    document still has a positive weight, so a small store keeps recalling,
+    but it counts for much less than a word only one document holds."""
+    weights = bm25.lexical.idf({'common': 5, 'rare': 1}, 5)
+    assert 0 < weights['common'] < weights['rare'] / 5
