@@ -2777,7 +2777,10 @@ def api_deny_scan(q, body):
 def api_deny_apply(q, body):
     from .denygen import scan_heavy, merge_deny
     pats = [p for p, _ in scan_heavy(body['path'])]
-    added, existed = merge_deny(body['path'], pats)
+    merged = merge_deny(body['path'], pats)
+    if merged is None:
+        return {'ok': False, 'error': 'settings.json is not a plain JSON object or permissions.deny is not a list; left unchanged'}
+    added, existed = merged
     return {'ok': True, 'added': added, 'existed': existed}
 
 

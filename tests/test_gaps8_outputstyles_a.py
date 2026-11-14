@@ -95,6 +95,20 @@ def test_builtin_name_is_refused_and_no_file_is_deleted(tmp_path, name):
     assert os.path.isfile(keep)
 
 
+def test_builtin_name_in_any_casing_is_refused_and_file_kept(tmp_path):
+    cfg = _cfg(tmp_path)
+    user_dir = os.path.join(cfg, 'output-styles')
+    os.makedirs(user_dir)
+    keep = os.path.join(user_dir, 'explanatory.md')
+    with open(keep, 'w', encoding='utf-8') as fh:
+        fh.write('---\nname: x\n---\n\nbody\n')
+
+    ok, msg = outputstyles.delete('explanatory', None, cfg)
+
+    assert ok is False and 'ships with Claude Code' in msg
+    assert os.path.isfile(keep)
+
+
 @pytest.mark.parametrize('name', ['!!!', '---', '   '])
 def test_name_without_slug_characters_is_refused_and_writes_nothing(tmp_path, name):
     cfg = _cfg(tmp_path)
@@ -171,9 +185,6 @@ def test_install_starter_refuses_unknown_name_and_writes_nothing(tmp_path):
     assert not os.path.exists(os.path.join(cfg, 'output-styles'))
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/outputstyles.py:170-172 returns {} for a malformed settings.json "
-    "and :198 writes over it, so the user's other keys are lost"))
 def test_select_refuses_malformed_settings_and_keeps_bytes(tmp_path):
     proj = _proj(tmp_path)
     sp = os.path.join(proj, '.claude', 'settings.json')
@@ -188,9 +199,6 @@ def test_select_refuses_malformed_settings_and_keeps_bytes(tmp_path):
     assert (ok, after) == (False, raw)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/outputstyles.py:268 writes the description unescaped, so a "
-    "newline and 'name:' line overrides the name when _parse (:128-129) reads it back"))
 def test_description_newline_cannot_rename_the_style(tmp_path):
     proj = _proj(tmp_path)
     cfg = _cfg(tmp_path)

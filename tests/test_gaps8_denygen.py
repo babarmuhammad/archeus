@@ -79,9 +79,6 @@ def test_scan_heavy_file_path_and_missing_project_return_empty(tmp_path):
         ('Read(node_modules/**)', 'node_modules/ present, 0 entries')]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/denygen.py:34 abspath('') returns the process cwd, so the "
-    "`not root` guard at :35 never fires and scan_heavy(None) scans the cwd"))
 def test_scan_heavy_without_project_does_not_scan_cwd(monkeypatch, tmp_path):
     proj = _proj(tmp_path)
     (proj / 'node_modules').mkdir()
@@ -177,9 +174,6 @@ def test_merge_deny_all_present_leaves_bytes_unchanged(tmp_path):
     assert sp.read_bytes() == before
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/denygen.py:82-83 swallows the parse error, and :96 writes "
-    "over the malformed file, so its user content is lost"))
 def test_merge_deny_refuses_malformed_settings_and_keeps_content(tmp_path):
     proj = _proj(tmp_path)
     raw = '{"permissions": {"deny": ["Read(.env)"], "allow": ["Bash(git:*)"]'
@@ -190,9 +184,6 @@ def test_merge_deny_refuses_malformed_settings_and_keeps_content(tmp_path):
     assert sp.read_bytes() == raw.encode('utf-8')
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/denygen.py:86-87 replaces a non-list permissions.deny with [] "
-    "and writes instead of refusing"))
 def test_merge_deny_refuses_non_list_deny_value(tmp_path):
     proj = _proj(tmp_path)
     raw = '{"permissions":{"deny":"Read(.env)"}}'
