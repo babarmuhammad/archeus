@@ -40,6 +40,14 @@ from archeus.core.domain import ids
 from archeus.node import isolation as iso
 
 
+def test_a_rootless_hook_command_is_refused_on_windows(monkeypatch):
+    """ntpath.isabs('\\stage\\python.exe') is True on 3.10 and False on 3.13; the hook
+    command must name a drive. os.name is faked so the Windows rule runs on any host."""
+    monkeypatch.setattr(os, 'name', 'nt')
+    with pytest.raises(iso.base.SpawnFailed, match='not a staged one'):
+        iso._staged(('\\stage\\python.exe', '-I', '\\stage\\hook.py'))
+
+
 def new_execution_id():
     return ids.new_id('execution')
 

@@ -1572,7 +1572,7 @@ class LocalNode:
         if not ((_REF.fullmatch(rev_name) or rev_name == 'HEAD') and _REF.fullmatch(ref)
                 and ref.startswith('refs/archeus/')
                 and '..' not in rev_name + ref and re.fullmatch(r'[0-9a-f]{40}', expect)
-                and os.path.isabs(root)):
+                and _abs(root)):
             raise StoreError('not a fetch Core may make: %r' % ((root, rev_name, expect, ref),))
         if len(ref) > REF_MAX:              # before the store is opened or anything written
             raise StoreError('the ref %s is %d characters long; a store takes at most %d'
@@ -1840,12 +1840,17 @@ def _export_tree(project_id, revision, top, workdirs, deadline):
         raise StoreError('the export of %s differs from its tree' % revision)
 
 
+def _abs(path):
+    # ntpath.isabs('\\x') is True on 3.10 and False on 3.13: a rooted path with no drive is refused on every version
+    return os.path.isabs(path) and (os.name != 'nt' or bool(os.path.splitdrive(path)[0]))
+
+
 @functools.lru_cache(maxsize=None)
 def _git_exe():
     # resolved once per process; on Windows `which` also searches the current
     # directory first, which yields a relative path: refused, never run
     exe = shutil.which('git')
-    if not exe or not os.path.isabs(exe):
+    if not exe or not _abs(exe):
         raise StoreError('no absolute git on PATH: %r' % (exe,))
     return exe
 
@@ -2106,7 +2111,7 @@ def _source(root, workdirs):
     and refs come from there), the config files and refs Git reads, and every
     object store it borrows from. Each is checked before the file naming the
     next is read, and nothing is started until all are. Returns the git dir."""
-    if not os.path.isabs(root):
+    if not _abs(root):
         raise StoreError('not a repository Core may read: %r' % (root,))
     _outside_executions([root], workdirs)
     # upload-pack's enter_repo tries <root>/.git, <root>, <root>.git/.git, <root>.git

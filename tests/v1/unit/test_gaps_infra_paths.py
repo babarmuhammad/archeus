@@ -43,6 +43,15 @@ def _under(root, path):
         return False
 
 
+def test_a_rootless_windows_home_is_refused(monkeypatch):
+    """ntpath.isabs('\\x') is True on 3.10 and False on 3.13; abspath would bind it to the
+    current drive, so a home with no drive is refused on every version. os.name is faked
+    so the Windows rule runs on any host."""
+    monkeypatch.setattr(os, 'name', 'nt')
+    with pytest.raises(ValueError, match='absolute'):
+        paths.archeus_home({'ARCHEUS_HOME': '\\archeus-home'}, 'win32')
+
+
 # ── GAP 3 to GAP 6: the legacy `.archeus` refusal, the only deletion guard here ──
 
 @pytest.mark.parametrize('sep', ['/', '\\'], ids=['slash', 'backslash'])

@@ -2,6 +2,8 @@
 must be an existing absolute directory, inside the project's roots when the
 session names a project."""
 
+import os
+
 import pytest
 
 from archeus.core.domain import entities, ids
@@ -31,6 +33,15 @@ def _project(rig, *roots):
 def test_a_relative_cwd_is_refused_and_nothing_is_written(rig, operation, bad):
     with pytest.raises(ValueError, match='not absolute'):
         getattr(rig.service, operation)(USER, harness_id='fake_a', cwd=bad)
+    assert rig.names() == [] and rig.term.opened == []
+
+
+def test_a_rootless_cwd_is_refused_on_windows(rig, monkeypatch):
+    """ntpath.isabs('\\work') is True on 3.10 and False on 3.13; the cwd must name a drive.
+    os.name is faked so the Windows rule runs on any host."""
+    monkeypatch.setattr(os, 'name', 'nt')
+    with pytest.raises(ValueError, match='not absolute'):
+        rig.service.register(USER, harness_id='fake_a', cwd='\\work')
     assert rig.names() == [] and rig.term.opened == []
 
 

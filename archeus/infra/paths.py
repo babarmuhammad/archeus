@@ -13,6 +13,7 @@ it. These functions compute paths and touch no disk, with two exceptions:
 and the two worktree resolvers read whether an earlier-layout directory exists.
 """
 
+import ntpath
 import os
 import re
 import stat
@@ -22,6 +23,15 @@ from ..core.domain import ids
 
 
 LEGACY_DIRNAME = '.archeus'
+
+
+def is_absolute(path):
+    """Absolute, and on Windows also with a drive or UNC share. ntpath.isabs('\\x')
+    is True on 3.10 and False on 3.13, and abspath binds a rootless path to the
+    current drive, so the drive is required on every version."""
+    if os.name != 'nt':
+        return os.path.isabs(path)
+    return ntpath.isabs(path) and bool(ntpath.splitdrive(path)[0])
 
 #: What V1 owns directly under `<ARCHEUS_HOME>` (target-architecture §5.1). The
 #: directory is NOT V1's alone: the legacy Qt shell names its application
@@ -55,7 +65,7 @@ def archeus_home(environ=None, platform=None):
     explicit = env.get('ARCHEUS_HOME', '').strip()
     if explicit:
         path = os.path.expanduser(explicit)
-        if not os.path.isabs(path):     # abspath below would bind it to the working directory
+        if not is_absolute(path):       # abspath below would bind it to the working directory
             raise ValueError('ARCHEUS_HOME must be an absolute path: %.80r' % (explicit,))
     elif plat.startswith('win'):
         base = env.get('LOCALAPPDATA', '').strip() or os.path.join(home, 'AppData', 'Local')

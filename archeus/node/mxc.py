@@ -44,8 +44,9 @@ def _path(value):
         value = os.fspath(value)
     except TypeError:
         raise MxcUnavailable('policy paths must be absolute') from None
-    if not _text(value) or not os.path.isabs(value):
-        raise MxcUnavailable('policy paths must be absolute')
+    # ntpath.isabs('\\x') is True on 3.10 and False on 3.13: a driveless path is refused on every version
+    if not _text(value) or not os.path.isabs(value) or os.name == 'nt' and not os.path.splitdrive(value)[0]:
+        raise MxcUnavailable('policy paths must be absolute (plain drive paths on Windows)')
     value = os.path.normpath(value)
     if os.name == 'nt':
         # commonpath raises across \?\, UNC and rooted forms, which would skip the overlap

@@ -197,14 +197,13 @@ def _validate_parent(parent):
     """
     if not isinstance(parent, str) or not parent:
         raise ValueError('parent must be a non-empty string')
-    if not _isabs(parent):
-        raise ValueError('parent must be an absolute path')
     if _IS_WINDOWS and parent.replace('/', '\\').startswith(('\\\\?\\', '\\\\.\\')):
         raise ValueError('parent must not use a device path prefix')
+    # ntpath.isabs('\\x') is True on 3.10 and False on 3.13: a driveless path is refused on every version
+    if not _isabs(parent) or _IS_WINDOWS and not _drv().splitdrive(parent)[0]:
+        raise ValueError('parent must be an absolute path with a drive or UNC share')
     parent = _normpath(parent)
     drive, rest = _drv().splitdrive(parent)
-    if _IS_WINDOWS and not drive:
-        raise ValueError('parent must include a drive or UNC share')
     if _dirname(parent) == parent or rest in ('', '\\', '/'):
         raise ValueError('parent must not be a drive or filesystem root')
     if len(_parts(parent)) < 3:

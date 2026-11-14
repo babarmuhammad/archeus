@@ -30,7 +30,8 @@ from typing import Mapping, Optional, Protocol, runtime_checkable
 from claude_sessions import config, proc
 
 from ..core import redact
-from ..infra.paths import MCP_CONFIG, REQUEST_DIR, ExecPaths, _plain_dir, archeus_home, run_dir
+from ..infra.paths import (MCP_CONFIG, REQUEST_DIR, ExecPaths, _plain_dir, archeus_home,
+                           is_absolute, run_dir)
 
 log = logging.getLogger('archeus.harnesses')
 
@@ -496,7 +497,7 @@ def _windows_rows(banned):
     """The Windows rows of a built-from-nothing environment: SystemRoot and what is
     derived from it, never from a directory in *banned*."""
     root = os.environ.get('SystemRoot')
-    if not (root and os.path.isabs(root) and os.path.isdir(root)) or _inside(root, banned):
+    if not (root and is_absolute(root) and os.path.isdir(root)) or _inside(root, banned):
         raise ValueError('SystemRoot is not a usable Windows directory')
     comspec = os.path.join(root, 'System32', 'cmd.exe')
     if not os.path.isfile(comspec):
