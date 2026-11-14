@@ -17,6 +17,8 @@ import re
 
 from claude_sessions import connections, repos
 
+from ...infra.paths import is_absolute
+
 #: Bumped whenever any extractor's output can change, so an inspection stored
 #: by an older extractor is never taken for a current one.
 EXTRACTOR_VERSION = 1
@@ -109,7 +111,7 @@ def discover(root_paths):
         raise ValueError('a project needs at least one root path')
     found = {}
     for root in root_paths:
-        if not (isinstance(root, str) and os.path.isabs(root)):
+        if not (isinstance(root, str) and is_absolute(root)):
             raise ValueError('root path %r is not absolute' % (root,))
         if not os.path.isdir(root):
             raise ValueError('root path %r is not a directory' % root)

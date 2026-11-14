@@ -29,3 +29,11 @@ def test_a_package_json_that_is_not_the_expected_shape_is_a_note_not_a_crash(tmp
     notes = []
     inspection._dependencies(str(tmp_path), notes)
     inspection._commands(str(tmp_path), [])
+
+
+def test_a_rootless_root_is_refused_on_windows(monkeypatch):
+    """ntpath.isabs('\\x') is True on 3.10 and False on 3.13; the root must name a drive.
+    os.name is faked so the Windows rule runs on any host."""
+    monkeypatch.setattr(os, 'name', 'nt')
+    with pytest.raises(ValueError, match='not absolute'):
+        inspection.discover(['\\repo'])

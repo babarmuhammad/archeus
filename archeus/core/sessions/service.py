@@ -21,6 +21,7 @@ import time
 from ...harnesses import sessions as SA
 from ...infra.artifacts import store as artifacts
 from ...infra.db import rows
+from ...infra.paths import is_absolute
 from ..application import sessions as S
 from ..application.world import Conflict
 from ..domain import entities
@@ -112,7 +113,7 @@ class SessionService:
     def _checked_cwd(self, cwd, project_id):
         """The cwd is an existing absolute directory, inside a root of the
         project when the session names one; a session resumed later launches there."""
-        if not (isinstance(cwd, str) and os.path.isabs(cwd)):
+        if not (isinstance(cwd, str) and is_absolute(cwd)):
             raise ValueError('cwd %r is not absolute' % (cwd,))
         if not os.path.isdir(cwd):
             raise ValueError('cwd %r is not a directory' % cwd)

@@ -24,8 +24,8 @@ from claude_sessions import config
 from ..core.domain import ids
 from ..harnesses import base
 from ..infra import discovery
-from ..infra.paths import (MAX_ATTEMPT, VERIFY_KEY, ExecPaths, isolation_dir, isolation_state,
-                           verify_consumed,
+from ..infra.paths import (MAX_ATTEMPT, VERIFY_KEY, ExecPaths, is_absolute, isolation_dir,
+                           isolation_state, verify_consumed,
                            quarantine_log, run_dir, verify_key_parts)
 from . import mxc, staging
 from .pv20_switches import checked
@@ -1730,7 +1730,7 @@ def _staged(cmd):
     another shape, paths outside one stage, a stage that does not verify) refuses the
     launch before any profile is touched."""
     if not (isinstance(cmd, tuple) and len(cmd) == 3 and cmd[1] == '-I'
-            and all(isinstance(p, str) and os.path.isabs(p) for p in (cmd[0], cmd[2]))):
+            and all(isinstance(p, str) and is_absolute(p) for p in (cmd[0], cmd[2]))):
         raise base.SpawnFailed('isolation: the hook command is not a staged one: %r'
                                % (cmd,))
     stage = os.path.dirname(cmd[0])

@@ -125,3 +125,13 @@ def test_a_system_root_inside_the_scratch_refuses(world, monkeypatch):
 def test_off_windows_there_are_no_windows_rows(world, monkeypatch):
     monkeypatch.setattr(base, '_WINDOWS', False)
     assert set(_env(world)) == PINNED - {'SystemRoot', 'windir', 'SystemDrive', 'ComSpec'}
+
+
+def test_a_rootless_system_root_is_refused(world, monkeypatch):
+    """ntpath.isabs('\\Windows') is True on 3.10 and False on 3.13; SystemRoot must name a
+    drive. os.name is faked so the Windows rule runs on any host."""
+    monkeypatch.setattr(base, '_WINDOWS', True)
+    monkeypatch.setattr(os, 'name', 'nt')
+    monkeypatch.setenv('SystemRoot', '\\Windows')
+    with pytest.raises(ValueError, match='SystemRoot is not a usable'):
+        base._windows_rows([])
