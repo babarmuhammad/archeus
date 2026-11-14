@@ -90,9 +90,6 @@ def test_harness_of_returns_registry_id_for_the_path(monkeypatch, tmp_path):
     assert seen == [path]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "flowgraph.py:100 _ev drops every 0 value, so a call measured at 0.0 s loses dur "
-    "(produced at flowgraph.py:216 and :373); the page then reads the call as untimed"))
 def test_ev_keeps_a_measured_zero_duration():
     assert flowgraph._ev(3, 2.0, 'result', dur=0.0).get('dur') == 0.0
 

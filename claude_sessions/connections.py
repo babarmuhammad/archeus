@@ -326,13 +326,14 @@ def _cache_path(project_path, proj_folder):
 
 
 def _load_cache(project_path, proj_folder):
-    p = _cache_path(project_path, proj_folder)
-    if p and os.path.isfile(p):
-        try:
-            with open(p, encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            return None
+    for base in (project_path, proj_folder):
+        p = _store.workfile(base, _CACHE_NAME) if base else ''
+        if p and os.path.isfile(p):
+            try:
+                with open(p, encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                return None
     return None
 
 
@@ -342,9 +343,8 @@ def _save_cache(graph, project_path, proj_folder):
             continue
         try:
             d = _store.workdir(base)
-            with open(os.path.join(d, _CACHE_NAME), 'w', encoding='utf-8') as f:
-                json.dump(graph, f)
-            return True
+            if _c.write_json_atomic(os.path.join(d, _CACHE_NAME), graph, indent=None):
+                return True
         except Exception:
             continue
     return False

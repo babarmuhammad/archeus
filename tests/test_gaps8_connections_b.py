@@ -134,10 +134,6 @@ def test_cache_file_holding_a_dict_loads_as_that_dict(stores, tmp_path):
     assert got == {'k': [1, 2]}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "connections.py:328-329 _load_cache reads only the project_path base, while "
-    "connections.py:341-349 _save_cache falls back to proj_folder; a cache saved through "
-    "the fallback is never read back"))
 def test_load_finds_the_cache_save_wrote_through_the_fallback(stores, tmp_path):
     pp, pf = str(tmp_path / 'project'), str(tmp_path / 'folder')
     stores.fail.add(pp)
@@ -145,10 +141,6 @@ def test_load_finds_the_cache_save_wrote_through_the_fallback(stores, tmp_path):
     assert connections._load_cache(pp, pf) == _graph()
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "connections.py:344-346 _save_cache opens the cache with 'w' before json.dump runs, so a "
-    "non-serialisable graph leaves the previous cache truncated (and the TypeError is "
-    "swallowed by the except at connections.py:348, not raised)"))
 def test_unserialisable_graph_keeps_the_previous_cache(stores, tmp_path):
     pp = str(tmp_path / 'project')
     assert connections._save_cache(_graph(), pp, '') is True
