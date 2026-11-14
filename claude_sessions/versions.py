@@ -647,6 +647,8 @@ def _entry_version(entry):
 def _clone_head(root):
     """The marketplace clone's HEAD sha, 12 chars, read out of `.git` without
     running git — see plugin_rows for why running it is not an option."""
+    if not root:
+        return ''
     try:
         head = open(os.path.join(root, '.git', 'HEAD'), encoding='utf-8').read().strip()
     except OSError:
@@ -654,8 +656,12 @@ def _clone_head(root):
     if not head.startswith('ref:'):
         return head[:12]
     ref = head[4:].strip()
+    git = os.path.realpath(os.path.join(root, '.git'))
+    path = os.path.realpath(os.path.join(git, *ref.split('/')))
+    if not path.startswith(git + os.sep):
+        return ''
     try:
-        with open(os.path.join(root, '.git', *ref.split('/')), encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             return f.read().strip()[:12]
     except OSError:
         pass
