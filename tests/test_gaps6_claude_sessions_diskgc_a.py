@@ -218,11 +218,6 @@ def test_store_totals_add_once_and_referenced_transcripts_count_as_kept(
     assert sorted(os.listdir(acct)) == before
 
 
-@pytest.mark.xfail(
-    strict=True, raises=TypeError,
-    reason="claude_sessions/diskgc.py:82 an unhashable session_id raises "
-           "TypeError and aborts the whole sweep, so the valid references and "
-           "the unreferenced candidate are never honoured")
 def test_a_session_id_that_is_not_a_string_is_ignored_and_the_sweep_completes(
         acct, clock, removed):
     root = acct / 'projects'

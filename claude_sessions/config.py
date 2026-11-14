@@ -644,9 +644,12 @@ def free_profile_port(s=None):
     THE one allocator: every place that creates a profile calls this, because
     two profiles sharing a port is two daemons racing for one bind and a session
     silently served by whichever won."""
-    used = {int(p.get('port') or 0) for p in provider_profiles(s)}
+    used = set()
+    for p in provider_profiles(s):
+        port = int(p.get('port') or 0)
+        used.update((port, port + 1))
     port = PROFILE_PORT_BASE
-    while port in used:
+    while port in used or port + 1 in used:
         port += 2
     return port
 

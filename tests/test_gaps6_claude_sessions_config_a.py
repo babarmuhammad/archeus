@@ -218,12 +218,6 @@ def test_an_odd_stored_port_never_makes_a_new_gateway_collide():
     assert new not in taken and c.gateway_port_of({'port': new}) not in taken
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="claude_sessions/config.py:647-651 free_profile_port checks failover "
-           "ports only: a stored even port 20130 owns gateway 20131, the next "
-           "free failover port 20129 has gateway 20130, which is the stored "
-           "profile's failover port")
 def test_a_stored_even_port_does_not_let_a_new_gateway_collide():
     base = c.PROFILE_PORT_BASE
     s = {'providers': [{'id': 'a', 'port': base + 1}]}

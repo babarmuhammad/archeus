@@ -15,8 +15,8 @@ Selected branches, denial/fail-closed first, then boundaries, then error paths:
  2. :153  a traversal that normalises outside the account is refused; the
           separator spelling and the case spelling of an inside path are both
           accepted through a named normcase seam
- 3. :153  a transcript reached through a folder that resolves outside the
-          account must not be removed (lexical guard only; strict xfail)
+ 3. :153  a transcript reached through a real junction (symlink on POSIX) that
+          resolves outside the account must not be removed
  4. :133  .name, tags.json, extra-paths, system-prompt and other sidecars in
           projects/ survive a full apply; only .jsonl files are candidates
  5. :136  a referenced old transcript is counted as kept before any stat; a
@@ -41,12 +41,12 @@ candidate counts on error, the stat race and the unreadable folder.
 
 Seams: `diskgc.time` is a fake clock, `os.remove` and `os.listdir` are
 recorded or failed on request, `diskgc._stat` is replaced for the stat race,
-`_c.log` is replaced so no event store is written, and the link resolution in
-the xfail probe is a fake of what the operating system would do. No link is
-created; every file lives under tmp_path.
+`_c.log` is replaced so no event store is written. The one link test creates a
+real junction under tmp_path; every other file lives under tmp_path too.
 """
 
 import os
+import subprocess
 
 import pytest
 
@@ -144,31 +144,20 @@ def test_separator_and_case_spellings_of_an_inside_path_are_accepted(
     assert removed == [spelled]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="claude_sessions/diskgc.py:153 the containment check is lexical; "
-           "a projects/ folder that resolves outside the account is walked by "
-           "_prune_transcripts and its transcript is removed through the link")
 def test_a_transcript_reached_through_a_folder_that_resolves_outside_is_not_removed(
-        tmp_path, clock, monkeypatch):
+        tmp_path, clock):
     acct = tmp_path / 'acct'
     foreign = tmp_path / 'foreign'
     linked = acct / 'projects' / 'linked'
-    put(linked / 'aaaa.jsonl', days=40)
+    linked.parent.mkdir(parents=True)
     put(foreign / 'bbbb.jsonl', days=40)
-    link_text = str(linked)
-    foreign_text = str(foreign)
-    removed_targets = []
-
-    def operating_system_remove(path):
-        if path.startswith(link_text):
-            path = foreign_text + path[len(link_text):]
-        removed_targets.append(path)
-
-    monkeypatch.setattr(diskgc.os, 'remove', operating_system_remove)
+    if os.name == 'nt':
+        subprocess.run(['cmd', '/c', 'mklink', '/J', str(linked), str(foreign)],
+                       check=True, capture_output=True)
+    else:
+        os.symlink(foreign, linked, target_is_directory=True)
     diskgc.run(days=30, apply=True, cfgdir=str(acct))
-    inside = str(acct) + os.sep
-    assert all(t.startswith(inside) for t in removed_targets), removed_targets
+    assert (foreign / 'bbbb.jsonl').exists()
 
 
 def test_every_sidecar_in_projects_survives_and_only_jsonl_is_a_candidate(
