@@ -149,12 +149,7 @@ def test_spend_defaults_and_rounding():
     assert usage._spend_of(rounded)['used'] == 1.23
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="claude_sessions/usage.py:101 `used.get('exponent') or 2` turns an explicit "
-           "exponent 0 into 2, so 250 minor units give 2.5 instead of 250.0")
 def test_spend_exponent_zero_is_honoured():
-    """PREMISE: exponent 0 means no minor unit (for example a zero-decimal currency),
-    so 250 minor units is 250.0. No test or docstring pins the current 2.5."""
+    """Exponent 0 means no minor unit (a zero-decimal currency): 250 minor units is 250.0."""
     data = {'spend': {'enabled': True, 'used': {'amount_minor': 250, 'exponent': 0}}}
     assert usage._spend_of(data)['used'] == 250.0

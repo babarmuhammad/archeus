@@ -97,8 +97,9 @@ def _spend_of(data):
     if not sp.get('enabled'):
         return None
     used = sp.get('used') or {}
+    exp = used.get('exponent')
     try:
-        amount = (used.get('amount_minor') or 0) / (10 ** (used.get('exponent') or 2))
+        amount = (used.get('amount_minor') or 0) / (10 ** (2 if exp is None else exp))
     except (TypeError, ValueError):
         amount = 0.0
     return {'used': round(amount, 2), 'pct': sp.get('percent') or 0,
