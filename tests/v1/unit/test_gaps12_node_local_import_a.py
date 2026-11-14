@@ -8,9 +8,8 @@ Ten selected branches, denial and fail-closed first, then boundaries, then error
    empty directory is planned by its id; one holding an entry is refused.
    Catches: the isdir test or the scandir emptiness test removed.
 2. 2720-2726 _import_plan seeded link, identical bytes: a regular file with the link target's
-   bytes is planned as 120000. PREMISE: docstring 2671-2675 says a seeded 120000 that is replaced
-   refuses the import, and nothing after the plan (2736-2738, the stream from 2741) refutes it.
-   Kept as a strict xfail.
+   bytes is planned as 120000: that is how an unchanged seeded link looks, since _write_tree
+   writes a link as its target text (owner Q1, A). The card premise (refuse) was wrong.
 3. 2721-2722 _import_plan seeded link: a size difference or a directory refuses before _blob_id
    is called. Catches: the size or isdir clause removed, or the order changed.
 4. 2696-2697 _import_plan root skip: the root `.git` and `git~1` are skipped, and a nested `.git`
@@ -118,16 +117,14 @@ def test_a_seeded_gitlink_that_became_a_file_or_holds_an_entry_is_refused(monkey
     assert plan == [('160000', 'sub', oid, None)]
 
 
-@pytest.mark.xfail(strict=True, reason="archeus/node/local.py:2720-2726 plans a regular file as a "
-                   "seeded 120000 link when its bytes equal the link target; docstring "
-                   "local.py:2671-2675 expects refusal")
-def test_the_xfail_seeded_link_replaced_by_a_regular_file_with_the_same_bytes_refuses(tmp_path):
+def test_an_unchanged_seeded_link_written_as_its_target_text_is_kept_as_a_link(tmp_path):
+    # _write_tree seeds a link as a plain file holding its target text (owner Q1, A)
     work = tmp_path / 'work'
     work.mkdir()
     (work / 'link').write_bytes(b'bin.dat')
-    seed = _seed(('120000', _blob(b'bin.dat'), 7, 'link'))
-    with pytest.raises(StoreError, match='the seeded link link was changed'):
-        local._import_plan(str(work), seed, _Ample())
+    oid = _blob(b'bin.dat')
+    plan, _counts = local._import_plan(str(work), _seed(('120000', oid, 7, 'link')), _Ample())
+    assert plan == [('120000', 'link', oid, None)]
 
 
 def test_a_seeded_link_of_another_size_or_a_directory_is_refused_before_it_is_hashed(monkeypatch):
