@@ -22,7 +22,7 @@ T = 'tests/v1/unit/test_verification_planted.py::'
 
 MUTATIONS = [
     ('PL01', 'a relative `which` result is run as Core\'s Git', [(LOCAL,
-     "    if not exe or not os.path.isabs(exe):",
+     "    if not exe or not _abs(exe):",
      "    if not exe:")],
      [T + 'test_git_exe_refuses_what_which_gives_that_is_not_absolute',
       T + 'test_git_exe_never_runs_a_git_planted_in_the_current_directory']),

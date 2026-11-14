@@ -286,7 +286,7 @@ MUTATIONS = [
      "for r in rows.where(conn, entities.OptIn)")],
      [SI + 'test_I05_an_opt_in_applies_to_exactly_its_own_account_and_project']),
     ('Q40', 'an opted-out row still applies', [(OPT,
-     "                if r.entity.opted_in]", "                if True]")],
+     "            if r.entity.opted_in]", "            if True]")],
      [SI + 'test_I05_an_opt_in_applies_to_exactly_its_own_account_and_project']),
     ('Q41', 'a change is not recorded as an event', [(OPT,
      "    tx.append(new_event('opt_in.changed',", "    (lambda e: e)(new_event('opt_in.changed',")],

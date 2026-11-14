@@ -1726,6 +1726,7 @@ def _spawn_rig(monkeypatch, tmp_path, decide=False, authority='present', opt_ins
     monkeypatch.setattr(M.resources, 'terms_permit', lambda r, a: True)
     monkeypatch.setattr(M.rows, 'get', get)
     monkeypatch.setattr(M.optins, 'effective', lambda r, **kw: dict(opt_ins or {}))
+    monkeypatch.setattr(M.optins, 'pins', lambda r, **kw: ())
     e = SimpleNamespace(id=ids.new_id('execution'), harness_id='fake', task_id='t',
                         account_id=None, route_decision_id=None, process_seq=0,
                         handoff_from=None, attempt=1, model=None, effort=None,

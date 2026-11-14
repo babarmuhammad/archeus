@@ -214,7 +214,7 @@ MUTATIONS = [
      "                if True]")],
      [THR + 'test_the_thread_shows_the_primary_messages_that_link_its_mission_in_order']),
     ('P25', "a bare mission verb in a thread is not about its mission", [(GRAM,
-     "        if m is None and mission and not p.arg:\n            m = rows.get(conn, entities.Mission, mission).entity\n", "")],
+     "        if m is None and not p.arg:\n            m = _thread_mission(conn, mission)\n", "")],
      [THR + 'test_a_bare_mission_verb_in_a_thread_is_about_its_mission_and_answered_there']),
     ('P26', "the intent worker forgets which thread a turn is in", [(INTENT,
      "grammar.resolve(conn, msg.text, mission=conv.mission_id,", "grammar.resolve(conn, msg.text, mission=None,")],
