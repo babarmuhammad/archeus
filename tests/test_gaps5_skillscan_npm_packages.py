@@ -40,12 +40,6 @@ def test_npm_dash_p_starved_at_the_end_stores_an_empty_value_without_exception(
     assert _no_privileged_side_effects == []
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'defect at claude_sessions/skillscan.py:308/327: a -p at the end of the '
-    'token list takes the empty-string default from next(iter(rest[i:i+1]), '
-    "''), and _npx_unpinned then reads the empty package as 'no package', so "
-    'the truncated fetch launcher `npm x -p` is silently accepted instead of '
-    'refused fail-closed'))
 def test_npm_x_dash_p_starved_at_the_end_is_refused_fail_closed():
     assert _flagged('npm', ['x', '-p'])
     assert skillscan._npx_unpinned(['npm', 'x', '-p']) is True

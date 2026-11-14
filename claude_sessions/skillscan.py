@@ -334,6 +334,8 @@ def _npx_unpinned(tokens):
     if not tokens:
         return False
     launcher, package, no_install = _package_command(tokens[0], tokens[1:])
+    if launcher and tokens[-1] in ('-p', '--package') and not no_install:
+        return True     # a starved -p names no package, so fail closed
     return bool(launcher and package and not no_install and not (_pinned(package) or _local(package)))
 
 
