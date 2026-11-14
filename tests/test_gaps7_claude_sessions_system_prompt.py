@@ -180,7 +180,7 @@ def _fake_context_seams(monkeypatch, tmp_path):
                         lambda pp, folder, sid, acct: (str(tmp_path / 'ctx.md'), 'title'))
     monkeypatch.setattr(store, 'project_folder', lambda d, e: str(target))
     monkeypatch.setattr(store, 'workfile', lambda pp, name: str(tmp_path / 'work' / name))
-    monkeypatch.setattr(harnesses, 'of', lambda d: {'id': harnesses.DEFAULT})
+    monkeypatch.setattr(harnesses, 'of', lambda d: harnesses.descriptor(harnesses.DEFAULT))
     monkeypatch.setattr(context_inject.subprocess, 'call',
                         lambda args, **k: calls.append(list(args)) or 0)
     return base, calls, flashes
