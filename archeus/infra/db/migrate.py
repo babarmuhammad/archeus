@@ -72,12 +72,13 @@ def migrate(conn, *, directory=None, before=None):
     if pending and have > 0 and before is not None:
         before(have, latest)
     for target, name, sql in pending:
+        stmts = statements(sql)
         conn.execute('BEGIN IMMEDIATE')
         try:
             if version(conn) >= target:         # another process got here first
                 conn.execute('ROLLBACK')
                 continue
-            for stmt in statements(sql):
+            for stmt in stmts:
                 conn.execute(stmt)
             conn.execute('PRAGMA user_version = %d' % target)
             conn.execute('COMMIT')
