@@ -36,7 +36,7 @@ _SEQ = re.compile(r'''
 ''', re.X)
 _BREAK = re.compile('[\r\n  \x0b\x0c\x85]+')
 # the rest of C0 and C1, DEL, and the bidirectional marks and overrides that reorder text
-_CTRL = re.compile('[\x00-\x1f\x7f-\x9f؜‎‏‪-‮⁦-⁩]')
+_CTRL = re.compile('[\x00-\x1f\x7f-\x9f؜‎‏‪-‮⁦-⁩￹-￻]')
 
 
 def clean(s):
@@ -62,6 +62,8 @@ def disp_width(s):
 def trunc(s, width):
     """Truncate to display width, appending '…' if cut. ANSI-safe:
     escape codes are preserved and never split; C_RESET appended if any code present."""
+    if width <= 0:
+        return ''
     if disp_width(s) <= width:
         return s
     out = []

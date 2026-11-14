@@ -171,12 +171,6 @@ def test_a_broker_composed_without_cores_policy_issues_nothing():
     assert t.created == [] and t.launched == [] and b._grants == {} and calls == []
 
 
-@pytest.mark.xfail(strict=True, reason='broker.py:165 `u = urlsplit(up.url)` itself raises '
-                                       'ValueError("Invalid IPv6 URL") for a malformed IPv6 '
-                                       'literal, and only the `u.port` read at broker.py:167 is '
-                                       'wrapped, so check_destination dies with ValueError '
-                                       'instead of Refused(403): a malformed provider URL is an '
-                                       'unhandled crash of issue(), not a denial')
 @pytest.mark.parametrize('url', ['http://[::1:8080', 'https://[::1:8080'],
                          ids=['proxy-bracket', 'https-bracket'])
 def test_a_url_the_parser_itself_cannot_read_is_a_denial_that_creates_nothing(url):

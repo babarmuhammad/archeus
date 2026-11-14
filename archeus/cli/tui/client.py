@@ -162,7 +162,7 @@ class Core:
             return opener.open(req, timeout=timeout)
         except urllib.error.HTTPError as e:
             raise _error(e, deadline, clock) from None
-        except (urllib.error.URLError, OSError) as e:
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
             raise CoreError(0, 'network', {'why': type(e).__name__}) from None
 
     def get(self, path, timeout=TIMEOUT_S, *, deadline=None, clock=None):
@@ -177,7 +177,11 @@ class Core:
             body = json.loads(r.read() or b'null')
             if deadline is not None and clock() >= deadline:
                 raise TimeoutError('Core request deadline')
-            return body, int(seq) if seq else None
+            try:
+                seq = int(seq) if seq else None
+            except ValueError:
+                raise CoreError(0, 'network', {'why': 'ValueError'}) from None
+            return body, seq
 
     def post(self, path, body):
         with self._open('POST', path, body) as r:

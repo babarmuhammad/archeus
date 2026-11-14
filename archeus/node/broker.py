@@ -167,8 +167,8 @@ def check_destination(up, resolve=None):
     """The addresses *up* may be reached at, or Refused. https to public addresses only;
     a provider proxy only at an exact loopback http endpoint. Resolved here, and the
     connection goes to these addresses, so a name cannot re-resolve somewhere else."""
-    u = urlsplit(up.url)
     try:
+        u = urlsplit(up.url)
         port = u.port
     except ValueError:
         raise Refused(403, 'the upstream is not a plain host URL') from None
