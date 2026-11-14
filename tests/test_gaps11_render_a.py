@@ -104,15 +104,19 @@ def test_restore_twice_writes_leave_once(monkeypatch):
 def test_frame_height_reads_console_and_falls_back_to_24(monkeypatch):
     """Branch: render.py:225-228 — the console's line count is used, and a
     failing size probe answers 24."""
-    monkeypatch.setattr(render.shutil, 'get_terminal_size',
-                        lambda *a, **k: os.terminal_size((80, 41)))
-    assert render.frame_height() == 41
+    # render.shutil is the global module, and pytest's own progress line calls
+    # get_terminal_size before teardown: undo each patch before returning.
+    with monkeypatch.context() as m:
+        m.setattr(render.shutil, 'get_terminal_size',
+                  lambda *a, **k: os.terminal_size((80, 41)))
+        assert render.frame_height() == 41
 
     def broken(*a, **k):
         raise OSError('synthetic: no console')
 
-    monkeypatch.setattr(render.shutil, 'get_terminal_size', broken)
-    assert render.frame_height() == 24
+    with monkeypatch.context() as m:
+        m.setattr(render.shutil, 'get_terminal_size', broken)
+        assert render.frame_height() == 24
 
 
 def test_sep_line_mixed_dash_label_is_text_not_rule(monkeypatch):
