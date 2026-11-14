@@ -338,23 +338,18 @@ def test_pruning_leaves_exactly_the_newest_keep_dailies(conns, tmp_path, keep):
 
 # ── error paths ──
 
-@pytest.mark.xfail(strict=True,
-                   reason='daily(keep=0) prunes nothing: names[:-keep] becomes names[:0] '
-                          'when keep is 0, so every daily file survives a prune to the '
-                          'newest zero (backup.py:73)')
 def test_pruning_to_zero_removes_the_older_dailies(conns, tmp_path):
-    """backup.py:73 — keep=0 must at least clear the days the caller refused to
-    keep; today's own file is left out of the assertion so any correct fix
-    (prune all, or refuse keep<1) turns this green."""
+    """backup.py:73 — keep=0 is refused (owner decision, 14 Nov): it raises before
+    any backup is taken or any daily file is removed."""
     src = _seed(conns, tmp_path, 1)
     folder = tmp_path / 'bk'
     folder.mkdir()
-    for day in ('20260101', '20260102', '20260103'):
-        (folder / ('archeus-%s.db' % day)).write_bytes(b'older daily')
-    backup.daily(src, str(folder), today=datetime(2026, 1, 4, tzinfo=timezone.utc), keep=0)
-    left = [f for f in os.listdir(str(folder))
-            if backup.PATTERN.fullmatch(f) and f != 'archeus-20260104.db']
-    assert left == []
+    names = ['archeus-%s.db' % day for day in ('20260101', '20260102', '20260103')]
+    for name in names:
+        (folder / name).write_bytes(b'older daily')
+    with pytest.raises(ValueError):
+        backup.daily(src, str(folder), today=datetime(2026, 1, 4, tzinfo=timezone.utc), keep=0)
+    assert sorted(os.listdir(str(folder))) == names
 
 
 @pytest.mark.parametrize('kind', ['missing', 'garbage'], ids=['missing', 'garbage'])

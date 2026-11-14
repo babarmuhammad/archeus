@@ -67,6 +67,8 @@ def backup(source, dest, *, replace=True):
 def daily(source, directory, *, today=None, keep=KEEP):
     """Today's `archeus-YYYYMMDD.db` in *directory*, then prune to the newest *keep*.
     Only files matching the daily backup name are ever removed."""
+    if keep < 1:
+        raise ValueError('keep must be at least 1, got %r' % keep)
     day = (today or datetime.now(timezone.utc)).strftime('%Y%m%d')
     path = backup(source, os.path.join(directory, 'archeus-%s.db' % day))
     names = sorted(f for f in os.listdir(directory) if PATTERN.fullmatch(f))
