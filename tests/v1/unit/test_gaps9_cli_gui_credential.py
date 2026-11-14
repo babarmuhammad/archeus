@@ -85,9 +85,6 @@ def _never(*a, **k):
     raise AssertionError('the shell started Core')
 
 
-@pytest.mark.xfail(strict=True, reason="archeus/cli/gui.py:141 out['token'] is unguarded: a "
-                   "redeem answer without a token raises KeyError out of attach instead of "
-                   "returning (None, why)")
 def test_a_redeem_without_a_token_is_no_shell(rig):
     """139-141 (STRICT XFAIL). `_credential` reads `out['token']` at gui.py:141 with no
     guard, so a redeem answer that lacks it raises KeyError out of attach, through
@@ -101,9 +98,6 @@ def test_a_redeem_without_a_token_is_no_shell(rig):
     assert why == MISSING
 
 
-@pytest.mark.xfail(strict=True, reason="archeus/cli/gui.py:135-136 ['code'] is unguarded: a "
-                   "launch-code answer without a code raises KeyError out of attach instead "
-                   "of returning (None, why)")
 def test_a_launch_code_without_a_code_is_no_shell(rig):
     """135-136 (STRICT XFAIL). `local.post(...)['code']` at gui.py:135-136 raises
     KeyError when the launch-code answer has no `code`, escaping attach. The same
