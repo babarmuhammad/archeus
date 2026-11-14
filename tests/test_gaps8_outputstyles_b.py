@@ -47,10 +47,6 @@ def tree(monkeypatch, tmp_path):
     }
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/outputstyles.py:155-156 marks every row whose name equals the active "
-    "style, so a name in both scopes shows two active rows; only the project file is in "
-    "force (active_scope, :262-272)"))
 def test_same_name_in_both_scopes_marks_only_the_project_row_active(tree):
     _write(os.path.join(tree['user'], 'Shared.md'), '---\nname: Shared\n---\nuser body\n')
     _write(os.path.join(tree['pdir'], 'Shared.md'), '---\nname: Shared\n---\nproject body\n')
