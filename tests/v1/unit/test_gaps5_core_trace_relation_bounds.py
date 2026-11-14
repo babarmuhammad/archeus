@@ -321,7 +321,7 @@ def test_the_cursor_is_never_asked_for_the_row_after_the_cap_is_passed():
 
 
 def test_exactly_the_cap_of_live_lessons_with_an_expired_tail_is_not_reported_as_more():
-    live, tail = _ids(200), _ids(400)
+    live, tail = _ids(200), _ids(trace.LESSONS_SCAN_MAX - 200)
     pairs = [(k, LIVE) for k in live] + [(k, EXPIRED) for k in tail]
     found, more, _ = _lessons(pairs)
     assert found == live and len(found) == trace.LESSONS_MAX
@@ -340,3 +340,20 @@ def test_a_body_deep_enough_to_outrecursion_the_decoder_is_skipped_like_any_bad_
     assert found == [a, c] and more is False
     assert bad not in found
     assert db.supply.pulled == len(pairs)
+
+
+def test_expired_rows_past_the_scan_cap_are_not_read_and_more_is_flagged():
+    cap = trace.LESSONS_SCAN_MAX
+    srcs = _ids(cap + 1)
+    pairs = [(s, EXPIRED) for s in srcs[:cap]] + [(srcs[cap], _POISON)]
+    found, more, db = _lessons(pairs)
+    assert (found, more) == ([], True)
+    assert db.supply.pulled == cap + 1
+
+
+def test_a_live_lesson_inside_the_scan_cap_is_still_found():
+    cap = trace.LESSONS_SCAN_MAX
+    srcs = _ids(cap)
+    pairs = [(s, EXPIRED) for s in srcs[:-1]] + [(srcs[-1], LIVE)]
+    found, more, _ = _lessons(pairs)
+    assert (found, more) == ([srcs[-1]], False)

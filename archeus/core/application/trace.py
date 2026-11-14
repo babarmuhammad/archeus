@@ -23,6 +23,7 @@ MAX_EVENTS = 1000
 #: inspect while it runs), so a mission with many retries stays one bounded read
 MAX_EXECUTIONS = 50
 LESSONS_MAX = 200
+LESSONS_SCAN_MAX = 500  # rows read per trace, expired or bad bodies included (owner, 14 Nov 2026)
 MAIN = 'main'
 _TEXT = 500
 
@@ -56,11 +57,13 @@ def lanes(events):
 
 def lessons(conn, mission_id):
     found, last = [], None
-    for r in conn.execute(
+    for n, r in enumerate(conn.execute(
             "SELECT src_id, body FROM relations WHERE src_kind = 'knowledge_item' "
             "AND rel = 'learned_from' AND dst_kind = 'mission' AND dst_id = ? ORDER BY src_id",
-            (mission_id,)):
-        # ponytail: scans a mission's expired relations too; a valid_until column if that ever costs
+            (mission_id,))):
+        # ponytail: expired relations count against the scan cap; a valid_until column if that ever costs
+        if n == LESSONS_SCAN_MAX:
+            return found[:LESSONS_MAX], True
         try:
             body = json.loads(r['body'])
         except (ValueError, RecursionError):  # the schema admits any TEXT: a bad body is skipped, not fatal
