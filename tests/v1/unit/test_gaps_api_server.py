@@ -350,17 +350,19 @@ def test_an_unsupported_method_is_answered_in_our_shape_with_our_headers(core):
     assert b'<!doctype' not in r.body.lower()
 
 
-@pytest.mark.parametrize('line, error', [
-    ('this-is-not-a-request-line', 'invalid_request'),
-    ('GET /v1/health HTTP/9.9', 'http_505'),
+@pytest.mark.parametrize('line, error, status', [
+    ('this-is-not-a-request-line', 'invalid_request', 400),
+    ('GET /v1/health HTTP/9.9', 'http_505', 505),
 ])
 def test_a_malformed_request_line_is_refused_without_an_html_page_or_an_echo(core, line,
-                                                                              error):
+                                                                              error, status):
     """server.py `Handler.send_error(code, message, explain)`: the message and the
     explain are dropped, and the explain is the client's own request line — the
-    stdlib puts it in an HTML page, which is a refusal that parses as content."""
+    stdlib puts it in an HTML page, which is a refusal that parses as content.
+    The status line is version-dependent: 3.10 answers these as headerless HTTP/0.9
+    (status None), 3.13 writes the status line; both carry our body."""
     r = _raw(core, line, timeout=3.0)
-    assert r.status is None and r.error is None                # answered, not left hanging
+    assert r.status in (None, status) and r.error is None      # answered, not left hanging
     assert json.loads(r.body) == {'error': error, 'detail': {}}
     assert b'<!doctype' not in r.body.lower() and b'Error' not in r.body
     assert line.encode() not in r.body                         # nothing echoed back

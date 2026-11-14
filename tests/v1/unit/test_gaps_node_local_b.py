@@ -61,7 +61,7 @@ from archeus.node import local
 from archeus.node.local import EMPTY_TREE, STORE_HEAD, LocalNode, StoreError
 
 #: the executable every pin record names: resolved, never started
-GIT = os.path.join(os.sep, 'fake', 'git', 'cmd', 'git.exe' if os.name == 'nt' else 'git')
+GIT = r'C:\fake\git\cmd\git.exe' if os.name == 'nt' else os.path.join(os.sep, 'fake', 'git', 'cmd', 'git')
 #: the version string a pin record holds where Git is never started
 VERSION = 'git version 2.50.0'
 #: what `init --bare -q --object-format=sha1 --template=<empty folder>` writes (T-048)

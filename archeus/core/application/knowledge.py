@@ -10,6 +10,7 @@ distinct missions. Nothing is deleted: supersession keeps the old item as
 history, retraction keeps the row, and purge keeps a tombstone.
 """
 
+import re
 from datetime import datetime
 
 from ..domain import entities, ids
@@ -262,6 +263,8 @@ def import_meeting(tx, *, actor, name, held_at, notes_sha256, notes_size, import
     date in the primary conversation, in this transaction."""
     if held_at is not None:
         try:
+            if re.search(r'[T ]24:?00', held_at):    # 3.14 reads 24:00 as next day's midnight
+                raise ValueError(held_at)
             datetime.fromisoformat(held_at.replace('Z', '+00:00'))
         except (TypeError, ValueError):
             raise ValueError('held_at is an ISO date or time: %r' % (held_at,)) from None

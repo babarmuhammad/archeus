@@ -123,6 +123,8 @@ def activate_pv20(*, ledger_dir, sdk_root, authorize, plan, bindings=None,
         root = os.path.normcase(os.path.realpath(ledger_dir))
     except (TypeError, ValueError, OSError) as error:
         raise ActivationRefused('invalid_parameters') from error
+    if '\0' in root:       # Windows 3.12+ realpath returns a NUL path instead of raising
+        raise ActivationRefused('invalid_parameters')
     node = None
     with _lock:
         claims = {('ledger', root), ('port', core_port)}
