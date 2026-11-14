@@ -11,6 +11,12 @@ from harness import Sandbox, run_flow, typed, ENTER, ESC
 from claude_sessions import plan_execute
 
 
+@pytest.fixture(autouse=True)
+def _home_in_tmp(monkeypatch, tmp_path):
+    # a finished plan is saved to ~/.claude/last_plan.json
+    monkeypatch.setattr(plan_execute._c, '_USERPROFILE', str(tmp_path))
+
+
 def flat(*parts):
     out = []
     for p in parts:
