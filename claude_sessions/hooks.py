@@ -1193,7 +1193,7 @@ def _move_across(event, index, src_key, dst_key, cfgdir=None):
     ref = _load(cfgdir)
     entries = (ref.get(src_key) or {}).get(event) or []
     idx = int(index)
-    if not isinstance(entries, list) or idx >= len(entries):
+    if not isinstance(entries, list) or not 0 <= idx < len(entries):
         return False
     if cfgdir:
         if _move(ref, event, idx, src_key, dst_key) is None:

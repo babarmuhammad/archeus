@@ -49,9 +49,6 @@ def _no_argv(*a, **kw):
     raise AssertionError('built an argv while notifications were off')
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/notify.py:64 — a line starting with '@ in the message closes the "
-    "PowerShell here-string early; escape() at notify.py:59 does not cover newlines"))
 def test_a_line_starting_with_the_here_string_closer_cannot_end_the_script_early(toast):
     script = notify.command('t', "ok\n'@; Start-Process calc; @'\nmore")[-1]
     closers = [line for line in script.split('\n') if line.startswith("'@")]

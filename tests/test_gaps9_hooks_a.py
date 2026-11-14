@@ -64,9 +64,6 @@ def _get(directory):
     return json.loads(_raw(directory))
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/hooks.py:1196 — a negative index passes the `idx >= len(entries)` "
-    "guard and _move (hooks.py:1168) pops the last entry; no lower bound is checked"))
 def test_a_negative_index_is_refused_not_resolved_to_the_last_hook(accounts):
     default, _ = accounts
     _put(default, {'hooks': {'Stop': [A, B]}})
