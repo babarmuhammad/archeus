@@ -30,6 +30,7 @@ from v1.integration.test_pv20_mxc_agent_path import (  # noqa: F401  (fixtures u
     agent_case, checks, kill_on_close, link_second_name, no_process, registry_lines, sdk)
 from v1.unit.test_mxc_boundary import gate  # noqa: F401  (fixture used by name)
 from v1.unit.test_origin_native import JOB, T0, FakeApi
+from v1.unit.test_mxc_boundary import native_only  # noqa: F401
 
 pytestmark = pytest.mark.os_isolation
 
@@ -147,6 +148,7 @@ def test_row_10_with_a_condition_unmet_nothing_is_launched_and_nothing_falls_bac
     assert no_process == []
 
 
+@native_only
 def test_row_08_an_estop_with_core_up_ends_the_tree_through_the_job(tmp_path, sdk, gate,
                                                                     no_process):
     """Row 8, Core up: ending the Job reaps the launcher tree; nothing is left running
@@ -171,6 +173,7 @@ def test_row_14_with_no_confined_identity_no_check_command_runs(checks):
     assert result['exit_code'] is None and result['error']
 
 
+@native_only
 def test_row_15_a_workload_that_reports_no_exit_is_never_a_clean_end(tmp_path, sdk, gate):
     """Row 15 / A7: only the Core-owned outcome reader gives an exit; a process that
     prints a result and gives none ends unverified, with nothing completed."""

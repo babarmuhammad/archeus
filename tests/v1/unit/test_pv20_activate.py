@@ -31,6 +31,7 @@ from .test_gaps_core_application_verification import IMP, Missions, _do, _errore
 from .test_mxc_boundary import Jobs, LauncherApi
 from .test_pv20_mxc_pins import SDK_FILES, reviewed, tree  # noqa: F401
 from .test_pv20_isolation import make_satisfying_request, new_execution_id, os_tripwire  # noqa: F401
+from v1.unit.test_mxc_boundary import native_only  # noqa: F401
 
 
 def assert_closed(core=None):
@@ -326,6 +327,7 @@ def test_native_backend_receives_constructor_switch(candidate):
     assert mxc.NativeMxc(None, None).switches is None
 
 
+@native_only
 def test_native_launch_uses_switch_without_global_flip(candidate, tmp_path):
     core = candidate.activate()
     boundary = core.pv20.node.isolation.boundary

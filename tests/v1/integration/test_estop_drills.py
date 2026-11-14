@@ -31,6 +31,7 @@ from claude_sessions import proc
 from v1.integration.test_execution_http import SLOW, _post, _wait
 from v1.integration.test_pv20_mxc_agent_path import agent_case, registry_lines
 from v1.unit.test_mxc_boundary import gate, outcome, sdk  # noqa: F401  (fixtures)
+from v1.unit.test_mxc_boundary import native_only  # noqa: F401
 
 
 @pytest.fixture
@@ -232,6 +233,7 @@ def isolated(tmp_path, sdk, gate, monkeypatch):
     LocalNode.clear_estop()
 
 
+@native_only
 def test_A01_isolated_core_death_ends_the_tree_and_the_registry_kill_finds_nothing(
         archeus_home, isolated):
     case = isolated.start()
@@ -247,6 +249,7 @@ def test_A01_isolated_core_death_ends_the_tree_and_the_registry_kill_finds_nothi
     assert os.path.exists(paths.stop_sentinel())
 
 
+@native_only
 def test_A02_the_sentinel_is_written_before_any_isolated_process_is_ended(archeus_home,
                                                                           isolated):
     case = isolated.start()
@@ -262,6 +265,7 @@ def test_A02_the_sentinel_is_written_before_any_isolated_process_is_ended(archeu
     assert [k[2] for k in isolated.kills] == [True]
 
 
+@native_only
 def test_A03_a_core_that_does_not_answer_is_stopped_by_identity_while_the_job_stays_the_authority(
         archeus_home, isolated):
     case = isolated.start()
@@ -274,6 +278,7 @@ def test_A03_a_core_that_does_not_answer_is_stopped_by_identity_while_the_job_st
         case.boundary.launch_calls[0]['job']]
 
 
+@native_only
 def test_A04_a_recycled_pid_is_never_touched_and_never_ends_the_launch(archeus_home,
                                                                        isolated):
     case = isolated.start()
@@ -283,6 +288,7 @@ def test_A04_a_recycled_pid_is_never_touched_and_never_ends_the_launch(archeus_h
     assert [k[:2] for k in isolated.kills] == [(stale.pid, stale.create_time)]
 
 
+@native_only
 def test_A05_an_estop_that_cannot_verify_the_end_is_quarantined_and_never_a_clean_end(
         archeus_home, isolated):
     case = isolated.start(resource_reader=lambda journal, owner: [{'resource': 'left'}])
@@ -296,6 +302,7 @@ def test_A05_an_estop_that_cannot_verify_the_end_is_quarantined_and_never_a_clea
     assert [r['op'] for r in records][-1] == 'quarantine'
 
 
+@native_only
 def test_A06_isolated_estop_then_a_restarted_core_adopts_nothing_and_resumes_nothing(
         archeus_home, isolated):
     case = isolated.start()

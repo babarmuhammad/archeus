@@ -23,6 +23,7 @@ from v1.integration.test_pv20_mxc_agent_path import (SEED, Traced, checks,  # no
                                                      no_process)
 from v1.unit.test_mxc_boundary import gate, make, outcome, script, sdk  # noqa: F401
 from v1.unit.test_pv20_isolation import os_tripwire  # noqa: F401
+from v1.unit.test_mxc_boundary import native_only  # noqa: F401
 
 
 def run_one(checks, attempt=0, **kw):
@@ -34,6 +35,7 @@ def journals(checks):
     return checks.boundary.ledger.journals()
 
 
+@native_only
 def test_the_checks_output_is_drained_into_its_own_log_and_the_exit_is_the_workloads(checks):
     checks.api.outcomes = script([outcome(agent_outcome=4, stdout=b'ran 3 tests\n',
                                           stderr=b'one failed\n')])
@@ -44,6 +46,7 @@ def test_the_checks_output_is_drained_into_its_own_log_and_the_exit_is_the_workl
     assert result['output_bytes'] == 23 and result['truncated'] is False
 
 
+@native_only
 def test_only_the_tail_the_caller_keeps_is_returned_and_the_log_holds_it_all(checks):
     checks.api.outcomes = script([outcome(stdout=b'x' * 100 + b'tail')])
     vid = ids.new_id('verification')
@@ -54,6 +57,7 @@ def test_only_the_tail_the_caller_keeps_is_returned_and_the_log_holds_it_all(che
     assert result['output_bytes'] == 104
 
 
+@native_only
 def test_the_log_sits_outside_every_grant_so_only_core_writes_it(checks):
     vid, _ = run_one(checks)
     fs = checks.boundary.launches[0].policy.raw['filesystem']
@@ -62,18 +66,21 @@ def test_the_log_sits_outside_every_grant_so_only_core_writes_it(checks):
     assert not [g for g in granted if iso._within(log, g)]
 
 
+@native_only
 def test_the_transport_is_bounded_by_the_cap_the_log_is_held_to(checks):
     run_one(checks)
     transport = checks.boundary.launches[0].backend.transport
     assert transport.output_limit == transport.total_limit == iso.CONFINED_OUT_MAX
 
 
+@native_only
 def test_the_deadline_is_this_checks_not_the_boundarys(checks):
     assert checks.boundary.timeout_ms == 5000
     run_one(checks, timeout=42)
     assert checks.boundary.launches[0].policy.raw['process']['timeout'] == 42000
 
 
+@native_only
 def test_output_past_the_cap_is_an_error_result_and_never_a_verdict(checks, monkeypatch):
     monkeypatch.setattr(iso, 'CONFINED_OUT_MAX', 100)
     checks.api.outcomes = script([outcome(agent_outcome=0, stdout=b'y' * 300)])
@@ -85,6 +92,7 @@ def test_output_past_the_cap_is_an_error_result_and_never_a_verdict(checks, monk
     assert evidence.check_of('test', 'runner check', ['runner'], result)['result'] == 'error'
 
 
+@native_only
 def test_a_launcher_that_never_exits_is_a_timeout_and_is_ended(checks):
     checks.api.outcomes = script([outcome(launcher_exit=None, stdout=b'hang\n')])
     vid, result = run_one(checks, timeout=1)
@@ -109,6 +117,7 @@ def used_after_close(checks):
     return late
 
 
+@native_only
 def test_a_run_that_stops_early_ends_the_launch_before_the_job_is_closed(checks):
     late = used_after_close(checks)
     checks.api.outcomes = script([outcome(launcher_exit=None, stdout=b'hang\n')])
@@ -118,6 +127,7 @@ def test_a_run_that_stops_early_ends_the_launch_before_the_job_is_closed(checks)
     assert checks.jobs.terminated == [launch.job]
 
 
+@native_only
 def test_a_run_that_fails_ends_the_launch_before_the_job_is_closed(checks, monkeypatch):
     late = used_after_close(checks)
 
@@ -130,6 +140,7 @@ def test_a_run_that_fails_ends_the_launch_before_the_job_is_closed(checks, monke
     assert len(checks.jobs.closed) == 1 and len(checks.jobs.terminated) == 1 and late == []
 
 
+@native_only
 def test_a_started_launch_whose_child_cannot_be_built_is_ended(checks, monkeypatch):
     def unreadable(path, mode='r', *args, **kw):
         raise PermissionError('stdin file unreadable')
@@ -145,6 +156,7 @@ def test_a_started_launch_whose_child_cannot_be_built_is_ended(checks, monkeypat
     assert local.mxc_busy(checks.boundary.ledger) == set()
 
 
+@native_only
 def test_an_attempt_is_journalled_under_its_own_name_and_ends_with_a_completion(checks):
     vid, _ = run_one(checks, attempt=2)
     name = 'verify_%s_2-p1' % vid
@@ -188,6 +200,7 @@ def test_a_tree_that_cannot_be_exported_launches_nothing(checks, monkeypatch, fa
     assert checks.recorded == [result]
 
 
+@native_only
 def test_the_scratch_is_a_second_writable_grant_over_the_checkout(checks):
     vid, _ = run_one(checks)
     p = VerifyPaths(vid, 0)

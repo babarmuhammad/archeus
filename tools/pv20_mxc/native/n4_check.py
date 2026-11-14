@@ -1370,7 +1370,7 @@ def main(argv=None):
         return 3
     src, cli = os.path.join(parent, *n2.SDK_TAIL), os.path.join(parent, 'cli')
     root_env = os.environ.get('SystemRoot', '')
-    if not n2._system_ok(root_env) or not os.path.isfile(ntpath.join(root_env, 'System32', 'curl.exe')):
+    if not n2._system_ok(root_env) or not os.path.isfile(os.path.join(root_env, 'System32', 'curl.exe')):
         print('SETUP ERROR: SystemRoot is not a plain drive\\Windows folder with cmd.exe and curl.exe', flush=True)
         return 3
     if not os.path.isfile(os.path.join(src, 'package.json')) or not os.path.isfile(os.path.join(cli, 'claude.exe')):

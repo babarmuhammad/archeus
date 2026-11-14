@@ -53,7 +53,7 @@ def _entry(path, is_dir=None):
 def _present(path):
     try:
         os.lstat(path)
-    except FileNotFoundError:
+    except (FileNotFoundError, NotADirectoryError):
         return False
     return True
 

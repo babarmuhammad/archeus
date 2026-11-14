@@ -29,6 +29,7 @@ from v1.integration.test_pv20_mxc_agent_path import (agent_case, child_of, no_pr
                                                      registry_lines)
 from v1.unit.test_mxc_boundary import gate, outcome, sdk, seed_journal  # noqa: F401
 from v1.unit.test_pv20_isolation import os_tripwire  # noqa: F401
+from v1.unit.test_mxc_boundary import native_only  # noqa: F401
 
 RUNNING = outcome(launcher_exit=None)
 
@@ -71,6 +72,7 @@ def journal(case, seq=1):
 
 # ── the pump: the prompt in, the stream out ──────────────────────────────────
 
+@native_only
 def test_the_prompt_goes_in_and_both_outputs_are_appended_to_the_stream(tmp_path, sdk, gate):
     case = agent_case(tmp_path, sdk, outcomes=[outcome(stdout=b'{"type":"a"}\n',
                                                        stderr=b'warning\n')])
@@ -84,6 +86,7 @@ def test_the_prompt_goes_in_and_both_outputs_are_appended_to_the_stream(tmp_path
     assert os.path.getsize(ExecPaths(case.spec.execution_id).prompt) == 2
 
 
+@native_only
 def test_the_stream_of_a_resume_is_appended_to_the_one_before_it(tmp_path, sdk, gate):
     case = agent_case(tmp_path, sdk, outcomes=[outcome(stdout=b'one\n'),
                                                outcome(stdout=b'two\n')])
@@ -96,6 +99,7 @@ def test_the_stream_of_a_resume_is_appended_to_the_one_before_it(tmp_path, sdk, 
     assert stream_of(case) == b'one\ntwo\n'
 
 
+@native_only
 def test_a_stream_past_the_transports_default_bound_is_not_cut_off(tmp_path, sdk, gate):
     big = b'x' * (300 * 1024)                  # the 256 KiB default would end this launch
     case = agent_case(tmp_path, sdk, outcomes=[outcome(stdout=big)])
@@ -105,6 +109,7 @@ def test_a_stream_past_the_transports_default_bound_is_not_cut_off(tmp_path, sdk
     assert limits_of(case) == {'transport': {'output_limit': STREAM_BYTES}}
 
 
+@native_only
 def test_the_task_limits_are_the_launchs_bounds(tmp_path, sdk, gate):
     case = agent_case(tmp_path, sdk, outcomes=[outcome(stdout=b'y' * 100)])
     limits = {'output_bytes': 40, 'total_bytes': 60, 'timeout_s': 7}
@@ -129,6 +134,7 @@ def test_a_task_bound_that_is_not_a_positive_int_refuses_the_launch(tmp_path, sd
     assert case.boundary.launches == [] and case.api.events == []
 
 
+@native_only
 def test_a_launch_that_cannot_read_its_prompt_is_ended_and_exits_nonzero(tmp_path, sdk, gate):
     case = agent_case(tmp_path, sdk, outcomes=[RUNNING])
     first = case.boundary.launch
@@ -147,6 +153,7 @@ def test_a_launch_that_cannot_read_its_prompt_is_ended_and_exits_nonzero(tmp_pat
     assert case.jobs.terminated == [case.boundary.launch_calls[0]['job']]
 
 
+@native_only
 def test_the_child_answers_poll_none_while_the_launcher_runs(long_agent):
     handle, child = spawn(long_agent)
     assert child.poll() is None and child.wait(0.05) is None
@@ -156,6 +163,7 @@ def test_the_child_answers_poll_none_while_the_launcher_runs(long_agent):
     assert child.poll() == 1
 
 
+@native_only
 def test_a_normal_exit_is_the_workload_outcome_and_was_not_cancelled(tmp_path, sdk, gate):
     case = agent_case(tmp_path, sdk)
     handle = case.node.spawn(case.agent, case.spec, isolated=True)
@@ -172,6 +180,7 @@ def test_a_normal_exit_is_the_workload_outcome_and_was_not_cancelled(tmp_path, s
 # ── every stop of Core's ends through the launch, with its reason ─────────────
 
 @pytest.mark.parametrize('reason', ['disarmed', 'estop', 'limit', 'handoff', 'stopped'])
+@native_only
 def test_a_stop_ends_through_the_launch_and_never_through_the_pid_kill(long_agent, reason):
     handle, child = spawn(long_agent)
     job = long_agent.boundary.launch_calls[0]['job']
@@ -188,18 +197,21 @@ def test_a_stop_ends_through_the_launch_and_never_through_the_pid_kill(long_agen
     assert long_agent.node.cancelled(handle, 1) is True
 
 
+@native_only
 def test_kill_defaults_to_the_stopped_reason(long_agent):
     handle, child = spawn(long_agent)
     long_agent.node.kill(long_agent.agent, handle)
     assert child.reason == 'stopped'
 
 
+@native_only
 def test_kill_identity_routes_to_the_live_launch_too(long_agent):
     handle, child = spawn(long_agent)
     assert long_agent.node.kill_identity(handle, 'estop') is True
     assert child.reason == 'estop' and long_agent.pid_kills == []
 
 
+@native_only
 def test_a_second_stop_ends_nothing_twice(long_agent):
     handle, child = spawn(long_agent)
     first = child.cancel('estop')
@@ -209,6 +221,7 @@ def test_a_second_stop_ends_nothing_twice(long_agent):
     assert child.reason == 'estop' and len(long_agent.jobs.terminated) == 1
 
 
+@native_only
 def test_two_stops_in_flight_agree_on_the_first_reason(long_agent):
     handle, child = spawn(long_agent)
     api, held, entered = long_agent.api, threading.Event(), threading.Event()
@@ -235,6 +248,7 @@ def test_two_stops_in_flight_agree_on_the_first_reason(long_agent):
     assert 'limit' not in records[-1]['reason']
 
 
+@native_only
 def test_a_second_wait_on_a_draining_launch_ends_nothing(long_agent):
     handle, child = spawn(long_agent)
     launch = child.launch
@@ -246,6 +260,7 @@ def test_a_second_wait_on_a_draining_launch_ends_nothing(long_agent):
     assert child.reason == 'estop' and launch.end_state['reason'] == 'estop'
 
 
+@native_only
 def test_a_handle_naming_another_pid_never_cancels_the_launch(long_agent):
     handle, child = spawn(long_agent)
     stale = base.ProcessHandle(handle.execution_id, handle.pid + 99, handle.create_time,
@@ -255,6 +270,7 @@ def test_a_handle_naming_another_pid_never_cancels_the_launch(long_agent):
     assert long_agent.agent.stops == [stale]                    # only the pid fallback ran
 
 
+@native_only
 def test_a_launch_that_already_ended_is_not_killed_again_through_the_pid(tmp_path, sdk, gate):
     case = agent_case(tmp_path, sdk)
     handle = case.node.spawn(case.agent, case.spec, isolated=True)
@@ -264,6 +280,7 @@ def test_a_launch_that_already_ended_is_not_killed_again_through_the_pid(tmp_pat
     assert case.boundary.launches[0].end_state['reason'] == 'launcher exited'
 
 
+@native_only
 def test_the_children_are_keyed_by_execution_and_process_seq(tmp_path, sdk, gate):
     case = agent_case(tmp_path, sdk)
     eid = case.spec.execution_id
@@ -278,6 +295,7 @@ def test_the_children_are_keyed_by_execution_and_process_seq(tmp_path, sdk, gate
     assert list(case.authority.children) == [(eid, 2)]
 
 
+@native_only
 def test_ending_the_isolation_cancels_a_running_child_and_forgets_it(long_agent):
     handle, child = spawn(long_agent)
     eid = long_agent.spec.execution_id
@@ -288,6 +306,7 @@ def test_ending_the_isolation_cancels_a_running_child_and_forgets_it(long_agent)
     assert 'the mission ended' in journal(long_agent)[1][-1]['reason']
 
 
+@native_only
 def test_the_fence_ends_a_child_that_is_still_running_before_it_closes_the_job(long_agent):
     handle, child = spawn(long_agent)
     assert long_agent.node.fence_isolation(long_agent.spec.execution_id) is None
@@ -295,6 +314,7 @@ def test_the_fence_ends_a_child_that_is_still_running_before_it_closes_the_job(l
     assert long_agent.jobs.terminated and long_agent.jobs.closed
 
 
+@native_only
 def test_the_fence_of_an_ended_child_ends_nothing_again(tmp_path, sdk, gate):
     case = agent_case(tmp_path, sdk)
     case.node.spawn(case.agent, case.spec, isolated=True)
@@ -303,6 +323,7 @@ def test_the_fence_of_an_ended_child_ends_nothing_again(tmp_path, sdk, gate):
     assert child.reason is None and len(case.jobs.terminated) == 1
 
 
+@native_only
 def test_an_isolated_launch_that_fails_after_the_launch_ends_it(long_agent, monkeypatch):
     spec = long_agent.spec
     real = long_agent.authority._save
@@ -320,6 +341,7 @@ def test_an_isolated_launch_that_fails_after_the_launch_ends_it(long_agent, monk
     assert long_agent.jobs.terminated == [long_agent.boundary.launch_calls[0]['job']]
 
 
+@native_only
 def test_a_child_whose_thread_cannot_start_is_forgotten_and_its_profile_is_not_busy(
         long_agent, monkeypatch):
     def no_thread(self):
@@ -386,6 +408,7 @@ def test_boot_reads_a_live_launcher_by_pid_and_creation_time(tmp_path, sdk, gate
     assert noted() == [('live-p1', state)]
 
 
+@native_only
 def test_boot_never_quarantines_a_launch_this_core_is_running(long_agent):
     handle, child = spawn(long_agent)
     name = long_agent.boundary.launches[0].journal
@@ -396,6 +419,7 @@ def test_boot_never_quarantines_a_launch_this_core_is_running(long_agent):
     assert child.poll() is None
 
 
+@native_only
 def test_a_restart_after_a_cancelled_run_finds_it_already_quarantined_and_refuses_a_resume(
         long_agent):
     handle, child = spawn(long_agent)

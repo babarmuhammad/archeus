@@ -11,6 +11,7 @@ write and the engine's judgement of it.
 import dataclasses
 import os
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -284,6 +285,10 @@ class _Tx:
 
 # ── V12: a verifier fault is not a task failure (§6, §16) ──────────────────
 
+@pytest.mark.skipif(sys.platform != 'win32',
+                    reason='the resumed verification diffs the mission through local._project_git, '
+                           'which refuses off Windows (its config freeze is Windows-only, '
+                           'local._frozen_config): the second half cannot reach COMPLETED')
 def test_V12_a_runner_that_cannot_run_is_an_error_retried_once_then_yours(core, monkeypatch):
     rig = Rig(core)
     _repo, mid = _mission(core, rig, steps=[_write(FIX), {'emit': {'type': 'result',
