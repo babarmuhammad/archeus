@@ -126,11 +126,11 @@ def _candidates():
                 hit[2].add(key)
                 hit[3] = hit[3] or status == 'pinned'
                 hit[4] = hit[4] or status in ('approved', 'pinned')
-                hit[5] = max(hit[5], e.get('confidence', 0))
+                hit[5] = max(hit[5], e.get('confidence') or 0)
             else:
                 seen.append([tk, summ, {key}, status == 'pinned',
                              status in ('approved', 'pinned'),
-                             e.get('confidence', 0)])
+                             e.get('confidence') or 0])
     out = []
     for _tk, summ, projs, pinned, reviewed, conf in seen:
         n = len(projs)
