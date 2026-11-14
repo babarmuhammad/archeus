@@ -97,12 +97,12 @@ def _walk_source_files(root, max_files):
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith('.'))
         for nm in sorted(names):
             ext = os.path.splitext(nm)[1].lower()
-            if ext in SKIP_EXT or ext not in SOURCE_EXT:
+            if nm.lower().endswith(tuple(SKIP_EXT)) or ext not in SOURCE_EXT:
                 continue
-            files.append(os.path.join(cur, nm))
             if len(files) >= max_files:
                 truncated = True
                 break
+            files.append(os.path.join(cur, nm))
         if truncated:
             break
     return files, truncated
