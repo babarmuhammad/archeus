@@ -70,9 +70,6 @@ def test_limit_two_stops_after_two_events(feed, tmp_path):
     assert feed.pulled == 2, 'the parser must not be advanced past the limit'
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/flowgraph.py:469-473: the yield runs before the limit check, '
-    'so limit=0 yields one event instead of none'))
 def test_limit_zero_yields_nothing(feed, tmp_path):
     assert list(flowgraph.build_events(_path(tmp_path), harness='fake', limit=0)) == []
 

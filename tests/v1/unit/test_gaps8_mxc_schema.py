@@ -13,10 +13,10 @@ Selected branches, denial and fail-closed first, then boundaries, then error pat
    an extra key.
 8. mxc_schema.py:97-104 minItems, maxItems and uniqueItems are enforced; 1 and true are
    distinct items (control).
-9. mxc_schema.py:110-112 NaN passes minimum and maximum because both comparisons are False.
-   Strict xfail: source defect.
-10. mxc_schema.py:62-63 and 78-79 enum [1] refuses 1.0 although JSON numeric equality makes
-    them equal. Strict xfail: source defect.
+9. NaN and infinities are refused: they are not JSON numbers, and both bound comparisons
+   would be False.
+10. enum [1] accepts 1.0 and uniqueItems counts [1, 1.0] as a repeat (JSON numeric
+    equality); true stays distinct from 1.
 
 Pure validator calls on synthetic schemas and values. No I/O, no network, no subprocess.
 """
@@ -112,19 +112,18 @@ def test_array_bounds_and_unique_items_enforced_with_bool_and_int_distinct():
     assert check([1, True]) is True
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'archeus/node/mxc_schema.py:110-112: NaN passes minimum and maximum because both '
-    'comparisons are False; NaN is not a JSON number and must be refused'))
 def test_nan_is_refused_by_numeric_bounds():
     check = validator({'type': 'number', 'minimum': 0, 'maximum': 10})
     assert check(float('nan')) is False
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'archeus/node/mxc_schema.py:62-63 and 78-79: enum uses json.dumps equality, so '
-    '1.0 serialises as "1.0" and is refused by enum [1] although JSON numbers 1 and 1.0 '
-    'are equal'))
 def test_enum_integer_accepts_the_equal_float():
     check = validator({'enum': [1]})
     assert check(1) is True
     assert check(1.0) is True
+
+
+def test_unique_items_treats_one_and_one_float_as_equal_but_bool_and_int_distinct():
+    check = validator({'type': 'array', 'uniqueItems': True})
+    assert check([1, 1.0]) is False
+    assert check([True, 1]) is True
