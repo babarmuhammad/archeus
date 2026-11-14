@@ -117,9 +117,6 @@ def test_fold_stamps_last_used_on_lessons_only(sidecar):
     assert component['hits'] == 1 and 'last_used' not in component
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/recall.py:362 _log_hits joins names with newlines, so an "
-    "entity name containing a newline is read back as two names and gets no hits"))
 def test_entity_name_with_a_newline_gets_its_hit(sidecar):
     name = 'Parser\nHelper'
     recall._log_hits('', '', [name])

@@ -115,9 +115,6 @@ def test_keep_regions_counts_closed_fences_only():
     assert ctxaudit.keep_regions(None) == 0
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/ctxaudit.py:89-92 split_blocks: an end sentinel before the "
-    "start sentinel makes manual[j:] re-add the text between them"))
 def test_split_blocks_with_end_before_start_does_not_duplicate_text():
     text = f'A\n{_c._AGENTS_END}\nmid\n{_c._AGENTS_START}\nB\n'
     b = ctxaudit.split_blocks(text)

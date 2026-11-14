@@ -86,8 +86,10 @@ def split_blocks(text):
             ('memory',   (_c._MEMORY_START, _c._MEMORY_END)),
             ('agents',   (_c._AGENTS_START, _c._AGENTS_END)),
             ('loop',     (_c._LOOP_START, _c._LOOP_END))):
-        if start in manual and end in manual:
-            i, j = manual.index(start), manual.index(end) + len(end)
+        i = manual.find(start)
+        j = manual.find(end, i + len(start)) if i >= 0 else -1
+        if j >= 0:
+            j += len(end)
             out[key] = manual[i:j]
             manual = manual[:i] + manual[j:]
         else:
