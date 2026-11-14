@@ -250,8 +250,9 @@ def to_anthropic_response(data, model):
     choice = ((data.get('choices') or [{}])[0]) or {}
     msg = choice.get('message') or {}
     content = []
-    if msg.get('content'):
-        content.append({'type': 'text', 'text': msg['content']})
+    text = _flatten_text(msg.get('content'))
+    if text:
+        content.append({'type': 'text', 'text': text})
     for i, call in enumerate(msg.get('tool_calls') or []):
         fn = call.get('function') or {}
         content.append({'type': 'tool_use',
@@ -275,7 +276,10 @@ def to_anthropic_response(data, model):
 def _loads_or_empty(s):
     """A model that emits malformed tool arguments is common enough on local
     backends that it must not take the turn down: an empty input reaches the tool
-    and comes back as a normal tool error the model can react to."""
+    and comes back as a normal tool error the model can react to. Some backends
+    send the arguments already parsed."""
+    if isinstance(s, dict):
+        return s
     try:
         v = json.loads(s or '{}')
         return v if isinstance(v, dict) else {'value': v}

@@ -62,13 +62,12 @@ def check_endpoint(base, label='OmniRoute/failover endpoint'):
 
 def plan_store_path():
     """Return path for plan persistence (JSON), stored near the settings file."""
-    return os.path.join(os.path.expanduser('~'), '.claude', 'last_plan.json')
+    return os.path.join(_c._USERPROFILE, '.claude', 'last_plan.json')
 
 
 def save_plan(plan_text, path):
     """Write plan text and metadata to path as JSON."""
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump({'plan_text': plan_text, 'generated_at': None}, f, indent=2)
+    _c.write_atomic(path, json.dumps({'plan_text': plan_text, 'generated_at': None}, indent=2))
 
 
 def load_plan(path):
@@ -228,8 +227,7 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
         f'Planning with {plan_model}...', timeout=_plan_timeout(), cwd=cwd, env=env)
     result = (out or '').strip()
     if result:
-        try: save_plan(result, plan_store_path())
-        except OSError: pass
+        save_plan(result, plan_store_path())
     return result
 
 
