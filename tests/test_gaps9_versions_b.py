@@ -50,9 +50,6 @@ def _rows(monkeypatch, *rows):
     monkeypatch.setattr(plugins, 'known_marketplaces', lambda cfg_dir=None: list(rows))
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/versions.py:658 - the HEAD ref is joined under .git with no '
-    'containment check, so "ref: ../../<file>" reads a file outside the clone'))
 def test_a_head_ref_cannot_point_outside_the_git_directory(tmp_path):
     root = _clone(tmp_path)
     (root.parent / 'outside_ref').write_text(A + '\n', encoding='utf-8')
@@ -84,9 +81,6 @@ def test_a_self_source_reads_the_clone_head_and_a_missing_root_yields_nothing(tm
     assert v._entry_version({'source': source, '_root': ''}) == ('', '')
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/versions.py:643 with 647-651 - an empty _root makes _clone_head read '
-    '.git/HEAD relative to the working directory'))
 def test_a_missing_root_never_reads_the_working_directory_clone(tmp_path, monkeypatch):
     """versions.py:642-643 with 647-651 — an entry with no root gives _root '',
     and os.path.join('', '.git', 'HEAD') is the working directory's own .git."""
