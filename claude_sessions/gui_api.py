@@ -2132,6 +2132,8 @@ def api_skill_remove(q, body):
 
 def api_skill_create(q, body):
     from .skills import write_skill, _slug
+    if not isinstance(body['name'], str):
+        raise BadRequest('name must be a string')
     skill_dir = os.path.join(_skill_dest(body), _slug(body['name']))
     meta = {'name': _slug(body['name']), 'description': body.get('description', '')}
     if body.get('tools'):
@@ -2610,7 +2612,7 @@ def api_lessons_get(q, body):
     from .memory import load_memory
     mem = load_memory(q['path'], _folder(q.get('cfgdir'), q['enc']))
     lessons = [e for e in mem.get('entities', []) if e.get('type') == 'lesson']
-    lessons.sort(key=lambda e: (e.get('status') != 'pending',
+    lessons.sort(key=lambda e: (e.get('status', 'pending') != 'pending',
                                 -e.get('confidence', 0)))
     from .config import load_settings
     return {'lessons': [{'id': e.get('id'), 'name': e.get('name', ''),
@@ -2745,19 +2747,20 @@ def api_history_diff(q, body):
                                (json.loads(t).get('entities') or [])}
             try:
                 back, gone = names(old) - names(cur), names(cur) - names(old)
-            except Exception:
-                back, gone = set(), set()
-            lines = [f"--- now: {a['entities']} entities, {a['relations']} relations, "
-                     f"{a['lessons']} lessons",
-                     f"+++ snapshot: {b['entities']} entities, {b['relations']} relations, "
-                     f"{b['lessons']} lessons", '@@ what restoring would change @@']
-            lines += [f"+ {n}" for n in sorted(back)[:60]]
-            lines += [f"- {n}" for n in sorted(gone)[:60]]
-            if len(back) > 60 or len(gone) > 60:
-                lines.append(f"@@ …and {max(0, len(back) - 60) + max(0, len(gone) - 60)} more @@")
-            if not back and not gone:
-                lines.append('  the same facts — only their summaries or counters moved')
-            return {'title': diffview.TITLES.get(key, key), 'diff': lines}
+            except Exception:  # unhashable names in a hand-edited graph: the line diff below still works
+                back = None
+            if back is not None:
+                lines = [f"--- now: {a['entities']} entities, {a['relations']} relations, "
+                         f"{a['lessons']} lessons",
+                         f"+++ snapshot: {b['entities']} entities, {b['relations']} relations, "
+                         f"{b['lessons']} lessons", '@@ what restoring would change @@']
+                lines += [f"+ {n}" for n in sorted(back)[:60]]
+                lines += [f"- {n}" for n in sorted(gone)[:60]]
+                if len(back) > 60 or len(gone) > 60:
+                    lines.append(f"@@ …and {max(0, len(back) - 60) + max(0, len(gone) - 60)} more @@")
+                if not back and not gone:
+                    lines.append('  the same facts — only their summaries or counters moved')
+                return {'title': diffview.TITLES.get(key, key), 'diff': lines}
     # old=current, new=snapshot: the diff reads as "what restoring would do"
     return {'title': diffview.TITLES.get(key, key),
             'diff': diffview.unified(cur, old, diffview.TITLES.get(key, key))}

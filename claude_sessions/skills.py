@@ -139,7 +139,8 @@ def write_skill(skill_dir, meta, body):
     """Write <skill_dir>/SKILL.md with frontmatter. Returns True on success."""
     order = ['name', 'description', 'allowed-tools']
     keys = order + [k for k in meta if k not in order]
-    fm = '\n'.join(f"{k}: {meta[k]}" for k in keys if meta.get(k))
+    # one line per value: a newline in a description would add keys such as allowed-tools
+    fm = '\n'.join(f"{k}: {' '.join(str(meta[k]).split())}" for k in keys if meta.get(k))
     out = f"---\n{fm}\n---\n\n{body.rstrip()}\n"
     try:
         os.makedirs(skill_dir, exist_ok=True)
