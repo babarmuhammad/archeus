@@ -182,6 +182,10 @@ class Ledger:
         return os.path.join(self.root, execution_id + '.jsonl')
 
     def _anchor_path(self, execution_id):
+        # Beside the journal so the watchdog host, which has no Core database, can
+        # check it too. Trust boundary (owner, 14 Nov 2026): it catches a removed or
+        # edited last record and a tool that rewrites one file; a writer with the
+        # same rights who rewrites both journal and anchor is out of scope.
         return os.path.splitext(self._path(execution_id))[0] + '.anchor'
 
     def _anchor(self, execution_id):
