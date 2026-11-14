@@ -789,12 +789,15 @@ def start_auto_memory_scheduler():
     sooner, however much work is left, and the clock SURVIVES the process.
     Started by the real entry points only (never make_server, so tests don't
     spawn refreshes). Idempotent."""
-    global _sched_started
+    global _sched_started, _sched_stop
     if _sched_started:
         return
     _sched_started = True
     import threading
-    _sched_stop.clear()
+    # A fresh event per start, not clear() on the old one: a loop that stop()
+    # has signalled but not yet woken must keep seeing its own stop, and not
+    # the cleared flag a later start() leaves behind.
+    stop = _sched_stop = threading.Event()
 
     def _loop():
         # The interval is a budget, so it is counted from the last pass and not
@@ -806,9 +809,9 @@ def start_auto_memory_scheduler():
         # wait(), not sleep(): server_close() must be able to end this, and a
         # thread parked in sleep(3600) cannot be told anything.
         due = _last_pass() + _next_wait() - time.time()
-        if _sched_stop.wait(max(STARTUP_DELAY, due)):
+        if stop.wait(max(STARTUP_DELAY, due)):
             return
-        while not _sched_stop.is_set():
+        while not stop.is_set():
             owed = False
             try:
                 owed = _auto_scan_pass()
@@ -817,7 +820,7 @@ def start_auto_memory_scheduler():
             # after the pass, whatever it found: the budget is one pass per
             # interval, and a pass that found nothing stale still happened
             _mark_pass()
-            _sched_stop.wait(_next_wait(owed))
+            stop.wait(_next_wait(owed))
 
     threading.Thread(target=_loop, daemon=True).start()
 

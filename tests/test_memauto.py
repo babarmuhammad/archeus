@@ -507,7 +507,11 @@ def test_a_pass_stamps_the_clock_the_next_start_reads(monkeypatch):
     try:
         gui_api.start_auto_memory_scheduler()
         assert ran.wait(5), 'no pass ran with no stamp on disk'
-        _t.sleep(0.2)
+        # the stamp is written after the pass returns, on the loop thread: wait
+        # for that write itself, not for a guessed delay that loaded runs miss
+        deadline = _t.time() + 5
+        while gui_api._last_pass() <= before and _t.time() < deadline:
+            _t.sleep(0.01)
         assert gui_api._last_pass() > before, 'the pass left no stamp behind'
     finally:
         gui_api.stop_auto_memory_scheduler()
