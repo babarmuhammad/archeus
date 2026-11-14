@@ -159,9 +159,6 @@ def test_claude_remove_clears_selection_only_when_it_pointed_at_removed_dir(stor
 
 
 # 2300-2302 — PREMISE: an unknown name must not silently switch to the default
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/gui_api.py:2300-2302: switch to an unknown account name sets "
-    "claude_config_dir to '' and returns ok:True instead of refusing"))
 def test_switch_to_unknown_account_is_refused(store, tmp_path):
     w = str(tmp_path / 'acc-w')
     store['s']['claude_config_dir'] = w
@@ -172,9 +169,6 @@ def test_switch_to_unknown_account_is_refused(store, tmp_path):
 
 
 # 2295-2296 — PREMISE: add with an empty name must refuse, not create '.claude-'
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/gui_api.py:2295-2296: add with an empty name creates a "
-    "'.claude-' home directory and persists a nameless row instead of refusing"))
 def test_add_with_empty_name_refuses_and_creates_nothing(store, tmp_path):
     r = gui_api.api_accounts_post({}, {'action': 'add', 'name': ''})
     assert r.get('ok') is False

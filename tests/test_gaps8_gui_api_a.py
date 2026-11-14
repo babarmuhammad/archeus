@@ -136,3 +136,22 @@ def test_call_passes_non_dict_params_through_unchecked(homes):
     gui_api.call(lambda q, b: seen.append(q), ['enc'], None)
     assert seen == [['enc']]
     gui_api.check_params(['cfgdir', 'enc'])
+
+
+# skills/remove — a whole home is never deleted, only a skill folder inside one
+def test_skill_remove_refuses_a_home_but_removes_a_skill_inside_it(homes, monkeypatch):
+    from claude_sessions import skills
+    (homes / 'SKILL.md').write_text('x', encoding='utf-8')
+    skill = homes / 'skills' / 'mine'
+    skill.mkdir(parents=True)
+    (skill / 'SKILL.md').write_text('x', encoding='utf-8')
+    deleted = []
+    monkeypatch.setattr(skills, 'delete_skill', lambda d: deleted.append(d) or True)
+    monkeypatch.setattr(skills, 'personal_accounts', lambda d: [])
+
+    with pytest.raises(gui_api.BadRequest):
+        gui_api.api_skill_remove({}, {'dir': str(homes)})
+    assert deleted == [] and homes.is_dir() and (homes / 'SKILL.md').exists()
+
+    assert gui_api.api_skill_remove({}, {'dir': str(skill)}) == {'ok': True, 'accounts': []}
+    assert deleted == [str(skill)]

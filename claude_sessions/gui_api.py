@@ -905,12 +905,18 @@ def _managed_path_ok(v):
     instead: a harness home (which `_cfgdir_ok` already knows), or anything
     below one of the directory names a harness declares for project-scoped
     artifacts, which is where every project-scoped one lives by construction.
+
+    A home itself is never deletable, only what sits inside it: deleting the
+    home takes the account's whole config with it. The home roots are refused
+    before the managed-name check, which would otherwise accept a home named
+    like a project directory.
     """
     p = os.path.normcase(os.path.abspath(v))
-    for _hid, d in _harnesses._homes():
-        root = os.path.normcase(os.path.abspath(d))
-        if p == root or p.startswith(root + os.sep):
-            return True
+    roots = [os.path.normcase(os.path.abspath(d)) for _hid, d in _harnesses._homes()]
+    if p in roots:
+        return False
+    if any(p.startswith(root + os.sep) for root in roots):
+        return True
     return bool(set(p.split(os.sep)) & _harnesses.managed_dir_names())
 
 
@@ -2292,13 +2298,17 @@ def api_accounts_post(q, body):
         save_settings(s)
         return r
     if act == 'add':
+        if not str(name or '').strip():
+            return {'ok': False, 'error': 'name required'}
         d = body.get('dir') or os.path.join(_c._USERPROFILE, f'.claude-{name}')
         os.makedirs(_resolved(d), exist_ok=True)
         s['accounts'] = [a for a in s.get('accounts', []) if a.get('name') != name]
         s['accounts'].append({'name': name, 'dir': d})
     elif act == 'switch':
         d = '' if name == 'default' else next(
-            (a['dir'] for a in s.get('accounts', []) if a.get('name') == name), '')
+            (a['dir'] for a in s.get('accounts', []) if a.get('name') == name), None)
+        if d is None:
+            return {'ok': False, 'error': 'unknown account'}
         s['claude_config_dir'] = d
     elif act == 'rename':
         new = body.get('new', '')
