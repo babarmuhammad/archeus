@@ -1528,6 +1528,7 @@ VERIFY_OPT_INS = ('baseline',)
 SOURCE_OWNERS = {'account': ('user',), 'project': ('project', 'local')}
 #: a plugin (`name@marketplace`) or MCP server name: never a path
 _OPT_IN_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}')
+_SHA256 = re.compile(r'[0-9a-f]{64}')
 
 
 @entity
@@ -1548,6 +1549,9 @@ class OptIn(Entity):
     account_id: str = None
     project_id: str = None
     opted_in: bool = True
+    #: a project's MCP opt-in pins its .mcp.json: the sha256 of the file's bytes when
+    #: approved. A file that changed no longer carries the opt-in (owner item 76)
+    digest: str = None
 
     @property
     def owner(self):
@@ -1558,6 +1562,11 @@ class OptIn(Entity):
             raise ValueError('an opt-in has exactly one owner: an account or a project')
         if not isinstance(self.opted_in, bool):
             raise ValueError('OptIn.opted_in is a boolean')
+        if self.digest is not None and not (isinstance(self.digest, str)
+                                            and _SHA256.fullmatch(self.digest)):
+            raise ValueError('an opt-in pins a sha256 hex digest, not %r' % (self.digest,))
+        if self.digest is not None and (self.kind != 'mcp' or self.owner != 'project'):
+            raise ValueError('only a project MCP opt-in pins a digest')
         if not _OPT_IN_NAME.fullmatch(self.name) or '..' in self.name:
             raise ValueError('an opt-in names a source, plugin or MCP server, never a path: %r'
                              % self.name)

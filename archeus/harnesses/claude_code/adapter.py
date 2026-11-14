@@ -192,7 +192,8 @@ class ClaudeCodeAdapter:
     def inventory(self, spec, *, isolated=False):
         """What this execution's settings sources load and what becomes of it
         (ADR-0049): taken before the spawn, recorded by Core, read by argv."""
-        return sources.take(self._home(spec), spec.workdir, spec.opt_ins, isolated=isolated)
+        return sources.take(self._home(spec), spec.workdir, spec.opt_ins, isolated=isolated,
+                            pins=spec.opt_pins)
 
     @staticmethod
     def _home(spec):

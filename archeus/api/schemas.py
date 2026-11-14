@@ -1217,7 +1217,7 @@ SET_OPT_IN = {'type': 'object', 'properties': {
     'owner_id': {'type': 'string'},
     'kind': {'type': 'string', 'enum': list(entities.OPT_IN_KINDS)},
     'name': {'type': 'string'}, 'opted_in': {'type': 'boolean'},
-    'expected_version': _INT, 'idempotency_key': KEY},
+    'expected_version': _INT, 'digest': {'type': 'string'}, 'idempotency_key': KEY},
     'required': ['owner_id', 'kind', 'name', 'opted_in', 'idempotency_key']}
 MISSION_RESOURCES = {'type': 'object', 'properties': {
     'preferred_accounts': _IDS, 'preferred_harnesses': _IDS, 'forbidden_accounts': _IDS,

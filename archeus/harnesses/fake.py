@@ -85,7 +85,8 @@ class FakeHarness:
         if not self._sources:
             return None
         home = spec.account.home_ref if spec.account else None
-        return sources.take(home, spec.workdir, spec.opt_ins, isolated=isolated)
+        return sources.take(home, spec.workdir, spec.opt_ins, isolated=isolated,
+                            pins=spec.opt_pins)
 
     def start(self, spec):
         steps = list(spec.task_contract.get('fake_scenario', ()))

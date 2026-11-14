@@ -306,6 +306,7 @@ class ExecutionManager:
              and a['harness'] == e.harness_id and a.get('ref') == rd.entity.account_ref), None)
         with self.db.read() as r:
             opt_ins = optins.effective(r, account_id=e.account_id, project_id=m.project_id)
+            opt_pins = optins.pins(r, account_id=e.account_id, project_id=m.project_id)
             memory = (assemble.memory_text(r, m.context_package_id, resources.homes(
                 r, self.registry, self.db.writer.live[1]))
                 if INJECTION in opt_ins and m.context_package_id else '')
@@ -325,7 +326,7 @@ class ExecutionManager:
             # user site, no script directory on sys.path), so the gate on every tool
             # call imports nothing the execution could plant (T-031 §3)
             hook_settings=hook,
-            opt_ins=opt_ins,
+            opt_ins=opt_ins, opt_pins=opt_pins,
             broker=brk and base.BrokerLaunch(brk[1], brk[0]),
             task_contract={'key': t.key, 'kind': t.kind, 'estimate': t.estimate,
                            'action_classes': list(t.action_classes),

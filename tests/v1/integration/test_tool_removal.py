@@ -10,6 +10,7 @@ except one whose name collides with the opted-in server's (C2, L1); `Skill`
 exists exactly when an opted-in source brings a skill (C3).
 """
 
+import hashlib
 import json
 import os
 import time
@@ -134,7 +135,9 @@ def test_R04_an_excluded_server_whose_name_collides_with_the_opted_in_one_is_not
     """L1: the account's `pv.dot` and the project's opted-in `pv_dot` are one
     name to Claude Code. A deny would take the opted-in server with it, so the
     excluded one is left to --strict-mcp-config, which does not load it."""
-    opt(x, x.prj, 'mcp', 'pv_dot')
+    # a project's MCP opt-in pins the approved .mcp.json (owner item 76)
+    pin = hashlib.sha256(open(os.path.join(x.root, '.mcp.json'), 'rb').read()).hexdigest()
+    opt(x, x.prj, 'mcp', 'pv_dot', digest=pin)
     x.scenarios['t1'] = [TOOL('mcp__gh__issue', {}), TOOL('mcp__pv_dot__x', {}), DONE]
     e = through_approval(x, ready_in(x, x.prj, task('t1', 'read')))
     argv = started(e)['argv']
