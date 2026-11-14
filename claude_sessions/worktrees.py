@@ -172,9 +172,8 @@ def _sessions_by_cwd(project_path, proj_folder):
         except Exception:
             continue
         for mtime, sid, _preview, count in rows:
-            jsonl = store.transcript_path(folder, sid)
             try:
-                st = get_session_stats_cached(jsonl)
+                st = get_session_stats_cached(store.transcript_path(folder, sid))
             except Exception:
                 continue
             cwd = (st.get('cwd') or '').strip()
