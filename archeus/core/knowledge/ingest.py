@@ -11,6 +11,7 @@ with no date — never the clock's or the file's — and Archeus asks for it
 
 import os
 import re
+from datetime import date
 
 from ...infra.artifacts import store as artifacts
 from ..application import knowledge as K
@@ -33,10 +34,14 @@ def read_notes(path, held_at=None, *, allow_undated=False):
     stem = os.path.splitext(os.path.basename(path))[0]
     heading = next((ln[2:].strip() for ln in text.splitlines() if ln.startswith('# ')), '')
     name = heading or _DATE.sub('', stem).strip(' -_') or stem
+    if held_at == '':
+        raise ValueError('held_at is empty; give a date or none')
     if held_at is None:
         m = _DATE.search(stem) or _DATE.search('\n'.join(text.splitlines()[:5]))
         if m is None and not allow_undated:
             raise ValueError('no date in the file name or its first lines; give held_at')
+        if m is not None:
+            date(*map(int, m.groups()))
         held_at = None if m is None else '%s-%s-%s' % m.groups()
     return {'name': name, 'held_at': held_at, 'sha256': artifacts.put(data), 'size': len(data),
             'path': os.path.abspath(path)}

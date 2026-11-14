@@ -96,7 +96,8 @@ def encode(entity, cols):
 def decode(cls, record):
     names = {f.name for f in fields(cls)}
     data = json.loads(record['body'])
-    data.update({k: record[k] for k in record.keys() if k in names})
+    data.update({k: record[k] for k in record.keys()
+                 if k in names and not (record[k] is None and k in data)})
     return Row(cls.from_dict(data), *(record[m] for m in META))
 
 

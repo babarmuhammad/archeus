@@ -379,10 +379,6 @@ def test_a_verification_shows_only_the_start_of_its_revision(rig):
     assert 'at %s:' % STALE12 in line and STALE not in line
 
 
-@pytest.mark.xfail(strict=True, reason='reviewer.py:65 caps the no-repository label to 12 '
-                                       'characters as if it were a revision, so the line '
-                                       'reads "at no repositor": a missing repository is '
-                                       'shown mangled rather than said in words')
 def test_a_verification_with_no_revision_says_there_is_no_repository(rig):
     r = rig()
     s = r.scene()
@@ -473,9 +469,6 @@ def test_mission_checks_of_a_mission_with_no_branch_are_still_shown(rig):
     assert _after(r.prompt(s['mid']), header) == ['- criterion 1: AWAITING_HUMAN']
 
 
-@pytest.mark.xfail(strict=True, reason='reviewer.py:74 caps the no-repository label to 12 '
-                                       'characters as if it were a revision, so the header '
-                                       'of a mission with no branch reads "at no repositor"')
 def test_the_mission_check_header_names_the_branch_it_was_taken_at(rig):
     r = rig()
     s = r.scene(integration_head=None)

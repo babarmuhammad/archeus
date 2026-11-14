@@ -60,10 +60,10 @@ def _headline(conn, kind, entity_id, events, was_drifted=False):
         moves = [e for e in events if e.type == 'architecture.state_changed']
         if moves:
             last = moves[-1].payload
-            if last['to'] == 'DRIFTED':
+            if last.get('to') == 'DRIFTED':
                 return 'drift_found'
-            if last['to'] == 'CONSISTENT' and (was_drifted or any(
-                    'DRIFTED' in (e.payload['from'], e.payload['to']) for e in moves)):
+            if last.get('to') == 'CONSISTENT' and (was_drifted or any(
+                    'DRIFTED' in (e.payload.get('from'), e.payload.get('to')) for e in moves)):
                 return 'drift_cleared'
     return 'progressed'
 

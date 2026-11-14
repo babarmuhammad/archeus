@@ -48,8 +48,9 @@ def status(conn, project_id=None, homes=None):
             last = _last_inspection(conn, repo.id)
             assessed = None
             if repo.last_inspection_id is not None:
-                a = rows.get(conn, entities.RepositoryInspection, repo.last_inspection_id).entity
-                assessed = {'provisional': bool(a.dirty), 'complete': a.complete}
+                a = rows.get(conn, entities.RepositoryInspection, repo.last_inspection_id)
+                if a is not None:
+                    assessed = {'provisional': bool(a.entity.dirty), 'complete': a.entity.complete}
             repos.append({'id': repo.id, 'path': repo.path, 'kind': repo.kind,
                           'architecture_state': repo.architecture_state,
                           'last_revision': repo.last_revision, 'last_inspection': last})

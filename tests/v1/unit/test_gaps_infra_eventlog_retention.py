@@ -292,9 +292,6 @@ def test_a_lagging_consumer_is_delivered_exactly_the_surviving_tail_in_order(db)
     assert _effects(db, 'lag') == [3, 4, 5, 6]        # what it passed is gone, what it owes is not
 
 
-@pytest.mark.xfail(strict=True, reason='retention.py:25-27 clamps only on consumer_cursors;'
-                   ' a consumer whose crash left consumer_effects rows and no cursor row is'
-                   ' invisible to MIN(last_seq), so prune deletes the events it still owes')
 def test_prune_never_deletes_an_event_an_effects_only_consumer_still_owes(db, monkeypatch):
     """consumers.py promises that a crash between the effect and the cursor advance
     re-delivers the event without re-running the handler — which needs the event to still
@@ -404,10 +401,6 @@ def test_a_now_that_carries_an_offset_is_the_same_instant_as_the_same_utc_moment
     assert (got['events'], got['through']) == (1, 1) and _seqs(db) == [2]
 
 
-@pytest.mark.xfail(strict=True, reason='retention.py:21 accepts a naive `now` instead of'
-                   ' refusing it: a timestamp with no zone is read as local time by iso()'
-                   ' (writer.py:77-78), so the whole window slides by the machine UTC'
-                   ' offset and events still inside it are deleted')
 def test_a_now_without_a_zone_is_refused_rather_than_read_as_local_time(db):
     """Every `at` in the log is UTC with a `Z` (events.now_iso), and the cutoff is
     compared to it as text. A `now` without a zone has no meaning until something picks a
@@ -420,10 +413,6 @@ def test_a_now_without_a_zone_is_refused_rather_than_read_as_local_time(db):
         _prune(db, now='2035-06-01T12:00:00')
 
 
-@pytest.mark.xfail(strict=True, reason='retention.py:22 honours a negative keep_days'
-                   ' literally: the cutoff lands in the future, first_kept is NULL, so'
-                   ' retention.py:24 prunes through the head and the whole log goes'
-                   ' instead of the nonsense argument being refused')
 def test_a_negative_window_never_removes_events(db):
     """`keep_days` is subtracted unchecked (retention.py:22). A negative window asks for
     events newer than `now`, which is nothing, and the NULL `first_kept` is the branch
