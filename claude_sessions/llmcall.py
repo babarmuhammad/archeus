@@ -107,11 +107,14 @@ def run_headless(cmd, input_text=None, *, cwd=None, env=None, timeout=600,
     try:
         # CREATE_NO_WINDOW: a captured child shows nothing in its console,
         # so the window is pure flicker. See proc.no_window_flags.
+        # POSIX: the child leads its own group, so kill_tree's killpg takes what it
+        # spawned too; in archeus's group kill_tree can only kill the direct child.
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE if capture_output else None,
                              stderr=subprocess.STDOUT if capture_output else None,
                              text=text, encoding=encoding, errors=errors,
-                             cwd=cwd, env=env, creationflags=_proc.no_window_flags)
+                             cwd=cwd, env=env, creationflags=_proc.no_window_flags,
+                             start_new_session=not _proc.WINDOWS)
     except Exception as e:
         return Result(None, '', '', 'could not start %s: %s' % (cmd[:1], e), False)
     if on_spawn is not None:

@@ -199,7 +199,10 @@ def test_the_marker_travels_once_from_the_execution_to_its_task(browser, slow): 
     check(True, 'a new event after the remount sends one marker')
     advance(page, 1000)
 
-    # idle again: not a frame, not an animation
+    # idle again: not a frame, not an animation. Each execution frame makes the graph's
+    # reads stale and re-reads them over the real network: their answers redraw once, in
+    # real time, so let every read in flight answer before the count starts
+    settle(page, 5000)
     before = frames(page)
     advance(page, 10_000)
     check(frames(page) == before, '%d frames after the markers ended' % (frames(page) - before))

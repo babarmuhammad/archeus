@@ -286,9 +286,15 @@ def test_invalid_or_non_object_json_gives_no_json_findings():
     assert skillscan.lint('{} ') == []
 
 
+# the depth at which json raises RecursionError is not one number: CPython's C scanner
+# guard follows the C stack (3.14 POSIX allows far more than 1000 levels), so the
+# nesting here is deep enough to pass any default guard on every platform
+_DEEP = 200_000
+
+
 @pytest.mark.parametrize('text', [
-    '{"x":' + '[' * 5000,
-    '{"x":' + '[' * 5000 + ']' * 5000 + '}',
+    '{"x":' + '[' * _DEEP,
+    '{"x":' + '[' * _DEEP + ']' * _DEEP + '}',
 ], ids=['unclosed-nesting', 'closed-nesting'])
 def test_json_nested_past_the_parser_limit_is_unparsed_not_a_crash(text):
     assert [(f.rule, f.severity) for f in skillscan.lint(text)] == [('json-unparsed', 'note')]
