@@ -182,7 +182,7 @@ def _sum_usage(stats):
 
 
 def fmt_tok(n):
-    if n >= 1_000_000:
+    if n >= 999_950:  # anything that would round to 1000.0k
         return f"{n/1e6:.1f}M"
     if n >= 1_000:
         return f"{n/1e3:.1f}k"

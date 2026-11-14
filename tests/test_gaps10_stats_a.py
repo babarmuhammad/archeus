@@ -85,8 +85,5 @@ def test_fmt_tok_boundaries():
     assert stats.fmt_tok(1_000_000) == '1.0M'
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/stats.py:187-188 fmt_tok renders 999_999 as "1000.0k": '
-    'the k branch does not roll over into M'))
 def test_fmt_tok_does_not_render_four_digit_thousands():
     assert stats.fmt_tok(999_999) == '1.0M'
