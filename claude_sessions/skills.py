@@ -399,6 +399,9 @@ def install_skill(src_dir, dest_root):
         return ''
     # normpath: a trailing separator gives basename '' and dest == dest_root, which the rmtree below wipes
     dest = os.path.join(dest_root, os.path.basename(os.path.normpath(src_dir)))
+    # the rmtree below would delete the source itself (install_personal of a personal skill)
+    if os.path.normcase(os.path.realpath(src_dir)) == os.path.normcase(os.path.realpath(dest)):
+        return dest
     try:
         os.makedirs(dest_root, exist_ok=True)
         if os.path.isdir(dest):

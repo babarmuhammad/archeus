@@ -3,7 +3,7 @@
 Selected branches, denial and fail-closed first:
   398       install_skill refuses a source without SKILL.md: returns '' and creates nothing
   398       empty src_dir or empty dest_root returns '' with no directory created
-  401-407   a source that is already the destination loses its own folder (strict xfail)
+  401-407   a source that is already the destination is left in place
   403-405   an existing dest directory is replaced wholesale; a stale file is gone
   406       nested files (references/, scripts/) are copied; the source tree is unchanged
   401-408   dest exists as a regular FILE: copytree raises, except returns '', file untouched
@@ -43,10 +43,6 @@ def _tree(root):
     return out
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "skills.py:404-406: when src_dir is already dest (dest_root/basename), install_skill "
-    "rmtree's dest, which is the source, then copytree fails and the source is lost; "
-    "install_personal(personal skill) reaches this with the personal root as parent"))
 def test_installing_a_skill_onto_its_own_folder_keeps_the_source(tmp_path):
     root = tmp_path / 'skills'
     src = _skill(root, 'mine', 'precious\n')

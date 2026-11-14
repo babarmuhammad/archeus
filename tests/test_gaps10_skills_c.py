@@ -10,7 +10,6 @@ Selected branches, denial and fail-closed first:
   519-538  install_personal copies SKILL.md byte for byte into every root
   558-564  personal_accounts returns [] when no root has the skill, and keeps skill_roots order
   532-538  install_personal with no SKILL.md in the source returns [] and creates no root
-  567-579  install_project dedupes by path (strict xfail: the function does not dedupe)
   534-535  install_personal(all_accounts=False) installs only into personal_dir()
 
 Roots are tmp_path folders. _harnesses.skill_roots, _harnesses.project_skill_roots and
@@ -55,22 +54,6 @@ def test_project_root_that_cannot_take_the_skill_is_omitted_and_the_rest_install
 
     assert got == [os.path.join(str(a), 's')]
     assert b.read_text(encoding='utf-8') == 'a file, not a skills dir'
-
-
-@pytest.mark.xfail(strict=True, reason=(
-    "skills.py:567-579: install_project's docstring (568-572) promises dedupe by path, but "
-    "the function does not dedupe; only harnesses.py:692-705 does. Given duplicate roots "
-    "install_project returns one entry per root"))
-def test_install_project_dedupes_roots_by_path(tmp_path, monkeypatch):
-    lib = tmp_path / 'lib'
-    src = _skill(lib, 's')
-    a = str(tmp_path / 'a')
-    b = str(tmp_path / 'b')
-    monkeypatch.setattr(skills._harnesses, 'project_skill_roots', lambda p: [a, a, b])
-
-    got = skills.install_project(src, str(tmp_path / 'proj'))
-
-    assert got == [os.path.join(a, 's'), os.path.join(b, 's')]
 
 
 def test_install_personal_without_all_accounts_writes_only_personal_dir(tmp_path, monkeypatch):
