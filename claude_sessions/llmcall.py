@@ -158,6 +158,10 @@ def run_headless(cmd, input_text=None, *, cwd=None, env=None, timeout=600,
     except Exception as e:
         _proc.kill_tree(p)
         return Result(None, '', '', str(e), False)
+    except BaseException:
+        # its own session on POSIX: a terminal Ctrl-C no longer reaches the child
+        _proc.kill_tree(p)
+        raise
     finally:
         done.set()
         if t is not None:
