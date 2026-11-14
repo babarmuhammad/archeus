@@ -218,6 +218,8 @@ def audit_items(project_path, proj_folder, settings=None):
         from . import hooks as hooks_mod
         for e in (hooks_mod._load().get('hooks', {}) or {}).get('SessionStart', []):
             for h in e.get('hooks', []) if isinstance(e, dict) else []:
+                if not isinstance(h, dict):
+                    continue
                 cmd = h.get('command', '')
                 # the rule TEXT, not the hook module: importing an entry point
                 # runs its stdout setup in this process, which is None in a
