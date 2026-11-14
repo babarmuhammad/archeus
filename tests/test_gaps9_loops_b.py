@@ -77,10 +77,6 @@ def _interpreter(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, 'executable', str(tmp_path / 'python'))
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/loops.py:369 — the tag test is a substring test, so '
-    "'# archeus-loop-1' also matches the line of loop '12' and unschedule('1') "
-    'deletes both'))
 def test_removing_loop_one_leaves_loop_twelve_alone(monkeypatch):
     tab = _Tab(monkeypatch,
                '*/15 * * * * one # archeus-loop-1\n'
