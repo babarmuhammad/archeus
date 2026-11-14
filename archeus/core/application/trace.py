@@ -80,7 +80,7 @@ def trace(conn, mission_id, registry, *, homes=None):
     t = attention.timeline(conn, mission_id, limit=MAX_EVENTS, homes=homes)
     execs, rs = [], sorted(rows.where(conn, entities.Execution, mission_id=mission_id),
                            key=lambda r: r.entity.id)
-    for r in rs[-MAX_EXECUTIONS:]:
+    for r in rs[max(0, len(rs) - MAX_EXECUTIONS):]:
         e = r.entity
         adapter = registry.get(e.harness_id) if e.harness_id in registry.ids() else None
         o = public_output(output.read(e, adapter), homes)

@@ -157,6 +157,9 @@ def _pending_approvals(tx, mission_id=None):
             and (mission_id is None or r.entity.mission_id == mission_id)]
 
 
+_PLURAL = {'account': 'accounts', 'harness': 'harnesses'}
+
+
 def _card(type_, kind, id_, **extra):
     return dict(extra, type=type_, ref={'kind': kind, 'id': id_})
 
@@ -727,7 +730,7 @@ def resolve_directive(tx, d, harnesses=()):
     out, asked = {'scope': d['scope'], 'prefer': [], 'forbid': []}, []
     for side in ('prefer', 'forbid'):
         for kind in ('account', 'harness'):
-            for name in (d.get(side) or {}).get(kind + 's') or ():
+            for name in (d.get(side) or {}).get(_PLURAL[kind]) or ():
                 ref = resource(tx.conn, name, (kind,), harnesses)
                 if ref is None:
                     asked.append('I do not know exactly one %s called "%s". Which one do you '
@@ -783,7 +786,7 @@ def directive(tx, actor, msg, intent, mission_id, *, prefer=(), forbid=(), scope
     lists = {k: list(rp.get(k) or ()) for k in entities.RESOURCE_PREFERENCE_KEYS[:4]}
     applied, widen = [], []
     for ref in forbid:                                   # narrowing: always, at once
-        fk, pk = 'forbidden_%ss' % ref['kind'], 'preferred_%ss' % ref['kind']
+        fk, pk = 'forbidden_' + _PLURAL[ref['kind']], 'preferred_' + _PLURAL[ref['kind']]
         if ref['id'] in lists[pk]:
             lists[pk].remove(ref['id'])
         if ref['id'] not in lists[fk]:
@@ -791,7 +794,7 @@ def directive(tx, actor, msg, intent, mission_id, *, prefer=(), forbid=(), scope
             applied.append((fk, ref))
             said.append('no longer using %s' % _name(tx, ref))
     for ref in prefer:
-        fk, pk = 'forbidden_%ss' % ref['kind'], 'preferred_%ss' % ref['kind']
+        fk, pk = 'forbidden_' + _PLURAL[ref['kind']], 'preferred_' + _PLURAL[ref['kind']]
         if ref['id'] in lists[fk] or _consumption(tx, ref) in PROTECTED:
             widen.append(ref)                            # widening: proposed only
         elif ref['id'] not in lists[pk]:
@@ -817,7 +820,7 @@ def directive(tx, actor, msg, intent, mission_id, *, prefer=(), forbid=(), scope
         text += ' Until task-level preferences exist this applies to the whole mission.'
     for ref in widen:
         lists2 = {k: list(v) for k, v in lists.items()}
-        fk, pk = 'forbidden_%ss' % ref['kind'], 'preferred_%ss' % ref['kind']
+        fk, pk = 'forbidden_' + _PLURAL[ref['kind']], 'preferred_' + _PLURAL[ref['kind']]
         if ref['id'] in lists2[fk]:
             lists2[fk].remove(ref['id'])
         lists2[pk].append(ref['id'])

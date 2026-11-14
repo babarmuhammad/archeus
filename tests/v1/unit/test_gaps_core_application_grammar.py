@@ -423,9 +423,6 @@ def test_a_replayed_request_follows_the_rows_not_a_cache(db):
     assert resolve(db, 'stop M') == resolve(db, 'stop M')
 
 
-@pytest.mark.xfail(strict=True, reason='grammar.py:145: `rows.get(...).entity` '
-                   'AttributeErrors when a mission-thread id has no row; the '
-                   "contract (docstring 108-110, 146-147) is None — the brain's")
 def test_a_thread_whose_mission_row_is_gone_is_the_brains_not_a_crash(db):
     """grammar.py:144-145 — a bare `pause` in a thread whose mission id no
     longer resolves to a row must be the brain's, like every other reference
@@ -435,10 +432,6 @@ def test_a_thread_whose_mission_row_is_gone_is_the_brains_not_a_crash(db):
     assert resolve(db, 'pause', mission=ghost) is None
 
 
-@pytest.mark.xfail(strict=True, reason='grammar.py:123-124: the un-named `use` '
-                   'path does `rows.get(...).entity` on the thread id and '
-                   'AttributeErrors when that row is gone; it must return None '
-                   'like the named path through _mission (126-127)')
 def test_a_use_in_a_thread_whose_mission_row_is_gone_is_the_brains(db):
     """grammar.py:123-124 — same contract, the P19 B10 branch: `use A` with no
     `for` reads the thread's mission, and a thread id with no row must go to

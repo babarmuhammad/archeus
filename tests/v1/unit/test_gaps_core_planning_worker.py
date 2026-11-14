@@ -379,12 +379,6 @@ def test_a_denied_plan_is_recorded_as_a_denial_with_nothing_written():
         r.close()
 
 
-@pytest.mark.xfail(strict=True, reason='source bug on this branch: a PolicyDenied '
-                                       'carrying no specs reaches first_denial with [], and '
-                                       'authorization.first_denial (authorization.py:445) '
-                                       'binds ctx only inside its loop, so the empty-specs '
-                                       'deny raises UnboundLocalError instead of recording '
-                                       'that the policy no longer denies')
 def test_a_denial_that_carried_no_specs_is_still_judged_again(rig, monkeypatch):
     """worker.py plan(): `specs=e.specs or []` — a PolicyDenied from a dispatch
     (no specs) must still run the recording command, which re-judges the policy

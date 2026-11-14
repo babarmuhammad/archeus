@@ -108,6 +108,8 @@ class Intents:
             msg = rows.get(conn, entities.Message, message_id).entity
             if rows.where(conn, entities.Intent, message_id=message_id):
                 return 'already read'
+            if not msg.text:            # an Intent cannot hold an empty utterance: nothing to read
+                return ''
             ask = _asked(conn, msg.in_reply_to)
             conv = rows.get(conn, entities.Conversation, msg.conversation_id).entity
             control = None if ask else grammar.resolve(conn, msg.text, mission=conv.mission_id,

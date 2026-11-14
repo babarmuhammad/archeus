@@ -436,7 +436,7 @@ def record_plan_decision(tx, *, actor, mission, trigger, facts):
 
 def first_denial(policy, conn, mission, specs, *, now, actor=None):
     """The items of a would-be plan, judged, and whether any is a DENY."""
-    items = []
+    items, ctx = [], None
     for s in specs:
         got, ctx = evaluate_task(policy, conn, mission, s['key'], s.get('action_classes', ()),
                                  capabilities=s.get('capabilities_required', ()),

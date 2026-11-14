@@ -80,6 +80,11 @@ def _mission(conn, arg):
     return _one([m for m in live if key(m.title) == key(arg)])
 
 
+def _thread_mission(conn, mission):
+    row = rows.get(conn, entities.Mission, mission) if mission else None
+    return row.entity if row else None
+
+
 def _project(conn, arg):
     every = [r.entity for r in rows.where(conn, entities.Project)]
     if ids.is_id(arg, 'project'):
@@ -120,8 +125,7 @@ def resolve(conn, text, mission=None, harnesses=()):
         # with no mission named its scope is ambiguous, read as the mission's
         got = _FOR.match(p.arg)
         name, named = (got.group(1), got.group(2)) if got else (p.arg, None)
-        m = _mission(conn, named) if named else (
-            rows.get(conn, entities.Mission, mission).entity if mission else None)
+        m = _mission(conn, named) if named else _thread_mission(conn, mission)
         r = resource(conn, name, harnesses=harnesses) if name else None
         if m is None or r is None:
             return None                     # what does not resolve is the brain's
@@ -141,8 +145,8 @@ def resolve(conn, text, mission=None, harnesses=()):
                        got.group(2) if got else '')
     if p.verb in MISSION_VERBS + ('stop',):
         m = _mission(conn, p.arg) if p.arg else None
-        if m is None and mission and not p.arg:
-            m = rows.get(conn, entities.Mission, mission).entity
+        if m is None and not p.arg:
+            m = _thread_mission(conn, mission)
         if m is None:
             return None
         verb = p.verb

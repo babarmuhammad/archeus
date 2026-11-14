@@ -584,10 +584,6 @@ def test_a_harness_nobody_offered_is_a_sentence_rather_than_a_directive(make):
     assert r.one(entities.Mission, m.id).resource_preferences is None
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="conversation.directive pluralises 'harness' to 'harnesss', so "
-                          "the preference key no Mission holds is written and the whole "
-                          "control verb dies on KeyError before anything is recorded")
 def test_a_harness_named_in_the_words_is_the_mission_s_own_preference(make):
     # The obeyed turn above, to the end: the directive is recorded against the message
     # and the intent that asked for it, with no model in between. (The worker's part —
@@ -606,10 +602,6 @@ def test_a_harness_named_in_the_words_is_the_mission_s_own_preference(make):
     assert [d['message_id'] for d in rp['directives']] == [posted['message_id']]
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="a Message may hold an empty text but an Intent may not hold an "
-                          "empty utterance (entities.Intent.__post_init__), so the worker "
-                          "reads an empty turn into the brain and then cannot record it")
 def test_an_empty_turn_is_the_brain_s_and_is_still_read(make):
     # The grammar with nothing in it: no words to obey, so the message is neither
     # skipped, nor answered from nothing, nor an invented control. It is read, and the

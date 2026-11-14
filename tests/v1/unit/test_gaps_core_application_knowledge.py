@@ -766,10 +766,6 @@ def test_importing_into_a_project_that_does_not_exist_writes_nothing(db):
     assert _n_events(db) == before
 
 
-@pytest.mark.xfail(strict=True, reason='knowledge.py:262-266 catches only (TypeError, '
-                                       'ValueError) around fromisoformat, so a non-string '
-                                       'held_at (an int) escapes as AttributeError instead '
-                                       'of the ValueError every other bad date gets')
 def test_a_date_that_is_not_a_string_is_refused_the_same_way(db):
     """knowledge.py:264-266: `held_at.replace` is only a string's method; the
     guard's own contract ("held_at is an ISO date or time") says ValueError."""
