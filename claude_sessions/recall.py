@@ -476,10 +476,10 @@ def _rule_frontmatter(text):
     """
     unit = glob = ''
     scoped = False
-    for ln in text.splitlines()[:8]:
-        ln = ln.strip()
-        if ln == '---' and unit:
-            break
+    lines = [ln.strip() for ln in text.splitlines()[:64]]
+    if not lines or lines[0] != '---' or '---' not in lines[1:]:
+        return unit, glob, scoped
+    for ln in lines[1:lines.index('---', 1)]:
         m = re.match(r'^description\s*:\s*"?archeus memory:\s*(.+?)"?\s*$', ln)
         if m:
             unit = m.group(1)
@@ -507,7 +507,10 @@ def estimate_surfaces(project_path, proj_folder, settings):
         for nm in sorted(os.listdir(rules_dir)):
             if nm.startswith('archeus-mem-'):
                 p = os.path.join(rules_dir, nm)
-                txt = open(p, encoding='utf-8', errors='ignore').read()
+                try:
+                    txt = open(p, encoding='utf-8', errors='ignore').read()
+                except OSError:
+                    continue
                 unit, glob, scoped = _rule_frontmatter(txt)
                 # dicts, not tuples: a 2-tuple serialises as ["name", 12] and
                 # every consumer has to know the order. Same fix conventions.py

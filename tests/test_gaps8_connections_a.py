@@ -124,9 +124,6 @@ def test_every_returned_path_lies_under_the_walked_root(tmp_path):
     assert all(os.path.commonpath([p, root]) == root for p in files)
 
 
-@pytest.mark.xfail(strict=True, reason="connections.py:103-105: truncated is set as soon as the cap "
-                   "is reached, even when no further source file exists, so exactly max_files files "
-                   "reports a truncation that did not happen")
 def test_exactly_max_files_with_no_more_is_not_reported_as_truncated(tmp_path):
     for i in range(3):
         _touch(tmp_path, f'f{i}.py')
@@ -135,8 +132,6 @@ def test_exactly_max_files_with_no_more_is_not_reported_as_truncated(tmp_path):
     assert truncated is False
 
 
-@pytest.mark.xfail(strict=True, reason="connections.py:27-29 and 100: SKIP_EXT lists '.min.js', but "
-                   "os.path.splitext returns only '.js', so minified bundles are kept as source")
 def test_minified_javascript_is_skipped(tmp_path):
     _touch(tmp_path, 'app.js')
     _touch(tmp_path, 'vendor.min.js')

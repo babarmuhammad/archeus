@@ -45,8 +45,6 @@ def _write(directory, name, text):
         fh.write(text)
 
 
-@pytest.mark.xfail(strict=True, reason="recall.py:506-519: an OSError reading one archeus-mem rule "
-                   "file ends the whole loop, so every later rule is dropped from the surface estimate")
 def test_an_unreadable_rule_file_does_not_drop_the_rules_after_it(quiet_memory, monkeypatch, tmp_path):
     rules = _rules_dir(tmp_path)
     _write(rules, 'archeus-mem-a.md', '---\ndescription: "archeus memory: app/a"\npaths:\n  - "a/**"\n---\n')
@@ -92,8 +90,6 @@ def test_parsing_stops_at_the_closing_fence_once_the_unit_is_known():
     assert recall._rule_frontmatter(text) == ('app/first', '', False)
 
 
-@pytest.mark.xfail(strict=True, reason="recall.py:479: _rule_frontmatter reads only the first eight "
-                   "lines, so a paths: key declared on line 9 of the front matter is ignored")
 def test_a_paths_key_on_line_nine_of_the_front_matter_is_read():
     lines = ['---', 'description: "archeus memory: app/deep"', 'name: deep', 'model: x',
              'alpha: 1', 'beta: 2', 'gamma: 3', 'delta: 4', 'paths:', '  - "svc/**"', '---']
