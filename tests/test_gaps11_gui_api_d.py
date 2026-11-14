@@ -9,7 +9,7 @@ Candidate list, refusal first:
  6. 2750-2753  graph diff header: '--- now' first, '+++ snapshot' second
  7. 2754-2757  at most 60 names per side; overflow line counts the rest
  8. 2758-2759  identical fact sets get the 'same facts' line
- 9. 2744-2749  PREMISE: names() raising gives a false 'same facts' line (xfail)
+ 9. 2744-2749  fixed: names() raising gives a false 'same facts' line
 10. 2762-2763  text keys: old side is the current file, new side is the snapshot
 
 Seams: gui_api._folder, diffview.read_version, diffview.target_path, diffview.restore
@@ -154,10 +154,7 @@ def test_history_graph_diff_same_facts_line(env):
     assert out['diff'][-1] == '  the same facts — only their summaries or counters moved'
 
 
-# 2744-2749 — PREMISE: names() raising must not read as 'the same facts' (xfail)
-@pytest.mark.xfail(strict=True, reason="gui_api.py:2748-2749 turns a names() failure into empty "
-                   "sets, so the diff reports 'the same facts'; _graph_shape (gui_api.py:2682-2693) "
-                   "does not check that entity names are hashable")
+# 2744-2749 — fixed: names() raising must not read as 'the same facts'
 def test_history_graph_diff_unparseable_names_falls_back(env, monkeypatch):
     env['current'] = _graph({'name': ['x'], 'type': 'person'})
     env['snapshot'] = _graph({'name': 'y', 'type': 'person'})

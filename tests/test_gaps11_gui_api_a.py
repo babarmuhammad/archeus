@@ -7,7 +7,7 @@ Candidate list, refusal first:
  4. 2639-2644  approve_all touches only pending lessons
  5. 2634-2636  'approve' maps to approved, 'pin' maps to pinned
  6. 2613-2614  lesson sort: pending first, then higher confidence
- 7. 2613/2618  PREMISE: a status-less lesson sorts as non-pending but is reported as pending (xfail)
+ 7. 2613/2618  fixed: a status-less lesson sorts as non-pending but is reported as pending
  8. 2626-2627  counter defaults to 0, ttl defaults to 30
  9. 2671-2672  api_ctxaudit_prune: None result is refused as not ok
 10. 2661-2664  api_ctxaudit_prune_preview: None refused, a result exposes exactly four keys
@@ -110,10 +110,8 @@ def test_lessons_get_orders_pending_then_confidence(monkeypatch, folder):
     assert [row['id'] for row in out['lessons']] == ['p-high', 'p-low', 'a']
 
 
-# 2613/2618 — PREMISE: a lesson without a status sorts with the pending group,
+# 2613/2618 — fixed: a lesson without a status sorts with the pending group,
 # the group its row reports it in
-@pytest.mark.xfail(strict=True, reason="gui_api.py:2613 sorts a status-less lesson as "
-                   "non-pending while gui_api.py:2618 reports it as 'pending'")
 def test_lessons_get_status_less_lesson_sorts_as_pending(monkeypatch, folder):
     mem = {'entities': [
         {'type': 'lesson', 'id': 'a', 'status': 'approved', 'confidence': 0.5},
