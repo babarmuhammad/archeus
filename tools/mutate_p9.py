@@ -41,7 +41,7 @@ MUTATIONS = [
       U + '::test_U_R4_a_project_restriction_tightens_and_applies_only_to_that_project']),
     ('M04', 'explicit deny ignored (locks ignored)', ENG,
      "    effective = [specific[0]] + [r for r in applicable\n"
-     "                                 if r['locked'] and _depth(r) < top_depth]",
+     "                                 if r['locked'] and r is not specific[0]]",
      "    effective = [specific[0]]",
      [U + '::test_U_R2_global_deny_cannot_be_loosened_by_a_narrower_allow']),
     ('M05', 'project restriction bypassed', ENG,
@@ -70,8 +70,8 @@ MUTATIONS = [
      "    if ctx.get('estop'):\n", "    if False:\n",
      [U + '::test_estop_denies_everything']),
     ('M23', 'autonomy loosens a locked rule', ENG,
-     "                                 if r['locked'] and _depth(r) < top_depth]",
-     "                                 if r['locked'] and _depth(r) < top_depth\n"
+     "                                 if r['locked'] and r is not specific[0]]",
+     "                                 if r['locked'] and r is not specific[0]\n"
      "                                 and specific[0]['source'] != 'profile']",
      [U + '::test_U_P3_autonomy_never_loosens_a_locked_rule_or_the_floor']),
     ('M24', 'unknown attributes match permissive rules', RUL,
