@@ -177,8 +177,11 @@ def test_hostile_launcher_identity_is_never_polled(journal, change):
     # deleting both checks would hand pid 0/negative to the live process table.
     journal.append('e1', 'intent', requested_policy_digest=DIGEST, planned=[],
                    applied=[], observed={})
+    intent_row, _ = ledger.read_records(journal.journals()['e1'], 'e1')
+    prev = hashlib.sha256(ledger._line(intent_row[0])).hexdigest()
     with open(journal._path('e1'), 'ab') as stream:
-        stream.write(ledger._line(owner(1, **change)))
+        stream.write(ledger._line(dict(owner(1, **change), version=ledger.FORMAT_VERSION,
+                                       prev=prev)))
     assert journal.reconcile(no_pid, no_resource) == {'e1': ledger.DEAD_UNVERIFIED}
     rows, _ = ledger.read_records(journal.journals()['e1'], 'e1')
     assert rows[-1]['op'] == 'quarantine' and rows[-1]['reason'] == 'restart_unverified'
@@ -326,14 +329,12 @@ def test_unreadable_journal_becomes_invalid_marker(journal):
         'e1': ledger.DEAD_UNVERIFIED, 'bad': ledger.DEAD_UNVERIFIED}
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='_validate fails open on an unrecognized op: a record with '
-                          'only the base fields (execution_id/op/seq) passes validation')
 def test_validate_rejects_unknown_op():
     # mxc_ledger.py:26-59 — no elif arm and no op-membership check, so an unknown op
     # with bare fields returns quietly. Public paths guard it (read_records:79,
     # append:174), but _validate itself must fail closed for any future caller.
-    assert ledger._validate({'execution_id': 'e1', 'op': 'advance', 'seq': 0}, []) is not None
+    with pytest.raises(ValueError, match='unknown op'):
+        ledger._validate({'execution_id': 'e1', 'op': 'advance', 'seq': 0}, [])
 
 
 def test_complete_rejects_bool_outcome(journal):
