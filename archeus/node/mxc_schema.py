@@ -7,6 +7,7 @@ change adds it here.
 """
 
 import json
+import math
 import re
 
 _ANNOTATIONS = frozenset(('$schema', '$id', '$comment', 'title', 'description', 'default',
@@ -59,12 +60,24 @@ def _ref(ref, root):
     return root.get(parts[1], {}).get(parts[2], False)
 
 
+def _plain(v):
+    if isinstance(v, float) and v.is_integer():
+        return int(v)
+    if isinstance(v, list):
+        return [_plain(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _plain(x) for k, x in v.items()}
+    return v
+
+
 def _same(a, b):
-    return json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
+    return json.dumps(_plain(a), sort_keys=True) == json.dumps(_plain(b), sort_keys=True)
 
 
 def _ok(schema, value, root, depth):
     if depth > _DEPTH:
+        return False
+    if type(value) is float and not math.isfinite(value):
         return False
     if isinstance(schema, bool):
         return schema
