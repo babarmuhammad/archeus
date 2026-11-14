@@ -133,12 +133,13 @@ def _credential(info):
     local = client.Core(info['port'], token)
     try:
         code = local.post(endpoints.launch_code(), {'scopes': SHELL_SCOPES,
-                                                     'supersede': SHELL_NAME})['code']
+                                                     'supersede': SHELL_NAME}).get('code')
         out = local.post(endpoints.launch_redeem(),
-                         {'code': code, 'platform': 'desktop', 'name': SHELL_NAME})
+                         {'code': code, 'platform': 'desktop', 'name': SHELL_NAME}) if code else {}
     except client.CoreError:
         return None
-    return client.Core(info['port'], out['token'])
+    token = out.get('token')
+    return client.Core(info['port'], token) if token else None
 
 
 def estop():
