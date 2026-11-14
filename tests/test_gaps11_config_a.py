@@ -38,9 +38,6 @@ def test_take_flat_pops_parked_copy_when_no_top_level_value():
     assert 'provider_base_url' not in s[c._UNKNOWN_KEYS]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/config.py:545-547 _take_flat returns the top-level copy and never "
-    "pops the _UNKNOWN_KEYS copy, although its docstring says both are popped"))
 def test_take_flat_pops_both_top_level_and_parked_copies():
     s = {c._UNKNOWN_KEYS: {'omniroute_base_url': 'http://o', 'provider_base_url': 'http://p'}}
     out, _changed = c.migrate_settings(s)

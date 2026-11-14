@@ -542,9 +542,8 @@ def _take_flat(s, key):
     read off disk after these keys left _DEFAULT_SETTINGS. Popped from both, or
     save_settings() layers the bucket back over its output and the dead name
     survives every future migration."""
-    if key in s:
-        return s.pop(key)
-    return (s.get(_UNKNOWN_KEYS) or {}).pop(key, None)
+    parked = (s.get(_UNKNOWN_KEYS) or {}).pop(key, None)
+    return s.pop(key) if key in s else parked
 
 
 def _migrate_to_profiles(s):
