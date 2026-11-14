@@ -97,7 +97,8 @@ def candidate(tmp_path, monkeypatch, reviewed):
                 authorize=lambda eid, adapter: True, plan=lambda spec: None,
                 bindings=bindings, broker_options=dict(
                     core_instance='fixture', live=lambda binding: True,
-                    credentials=lambda binding: {}, upstream_of=lambda account: None),
+                    credentials=lambda binding: {}, upstream_of=lambda account: None,
+                    limits=broker.BrokerLimits(max_requests=3)),
                 principal_of=lambda evidence: None, core_port=7337, core_identity=(900, 9000),
                 enabled=True, clock=lambda: 100.0, timeout_ms=5000,
                 ports=runtime.Ports(executors=[], callers=[], sessions=[], brain=object()))

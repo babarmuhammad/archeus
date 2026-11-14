@@ -82,6 +82,7 @@ def broker(live=True, send=None, transport=None, **kw):
         calls.append((up, addrs, method, path, dict(headers), body))
         return Resp(headers=[('content-type', 'application/json'), ('request-id', 'r1')])
     kw.setdefault('resolve', lambda host, port: ['93.184.216.34'])
+    kw.setdefault('limits', B.BrokerLimits(max_requests=3))
     b = B.Broker(core_instance='core1',
                  live=live if callable(live) else (lambda bd, d: live),
                  credentials=lambda bd: {'x-api-key': UPSTREAM_KEY},

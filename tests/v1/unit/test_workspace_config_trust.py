@@ -23,6 +23,7 @@ Every test is seam-faked only; no process is started, no real git runs,
 no network is touched.
 """
 
+import contextlib
 import json
 import os
 from types import SimpleNamespace
@@ -203,43 +204,47 @@ def test_the_environment_of_a_pinned_call_cannot_be_steered(
         assert env['GIT_PROTOCOL_FROM_USER'] == '0'
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "local.py:1243 git_snapshot runs git add -A in the execution "
-        "worktree with no -c core.fsmonitor=false, no core.hooksPath "
-        "override and no scrubbed environment (threat-model H6)"
-    ),
-)
 def test_core_git_calls_over_an_execution_worktree_carry_the_pin(
         tmp_path, monkeypatch):
-    """Branch protected: local.py:1243-1249 (git_snapshot) calls proc.run
-    with no -c overrides. An execution-written .git/config with fsmonitor
-    or hooksPath runs a command. Threat-model row H6.
+    """Branch protected: git_snapshot (local.py) runs `git add -A` in an execution's
+    worktree through `_project_git`, which must pin core.fsmonitor and core.hooksPath
+    on the argv and scrub the environment. An execution-written .git/config with
+    fsmonitor or hooksPath would run a command. Threat-model row H6.
 
-    If the source is fixed to add the pin, remove this xfail."""
+    Observed at the subprocess call `_project_git` makes. The configuration freeze
+    needs a real repository and Win32 handles, so it is stubbed to the argv."""
     workdir = str(tmp_path / 'exec-work')
     os.makedirs(workdir, exist_ok=True)
+    exe = str(tmp_path / 'bin' / 'git')
+    monkeypatch.setenv('GIT_DIR', str(tmp_path / 'elsewhere'))
+    monkeypatch.setattr(local.proc, 'which', lambda name, avoid=None: exe)
+    monkeypatch.setattr(local, '_frozen_config',
+                        lambda root, argv, env, run, empty: contextlib.nullcontext(argv))
 
     recorded = []
 
     def fake_run(argv, **kw):
-        recorded.append(SimpleNamespace(
-            argv=argv, cwd=kw.get('cwd'), env=kw.get('env')))
-        return SimpleNamespace(returncode=0, stdout='', stderr='')
+        recorded.append(SimpleNamespace(argv=list(argv), cwd=kw.get('cwd'), env=kw.get('env')))
+        out = b''
+        if 'version' in argv:
+            out = b'git version 2.45.0\n'
+        elif '--git-path' in argv:
+            out = b'.git/info/attributes\n'
+        elif 'rev-parse' in argv:
+            out = b'a' * 40 + b'\n'
+        return SimpleNamespace(returncode=0, stdout=out, stderr=b'')
 
-    monkeypatch.setattr(local.proc, 'run', fake_run)
-    monkeypatch.setattr(local.proc, 'git',
-                        lambda args, root, **kw: 'a' * 40)
+    monkeypatch.setattr(local.subprocess, 'run', fake_run)
 
     local.LocalNode.git_snapshot(workdir, 'm')
 
-    assert recorded, 'no proc.run call was recorded'
-    first_argv = recorded[0].argv
-    assert 'core.fsmonitor=false' in first_argv, first_argv
-    has_hooks = any(a.startswith('core.hooksPath=')
-                    for a in first_argv)
-    assert has_hooks, first_argv
+    adds = [r for r in recorded if 'add' in r.argv]
+    assert adds, [r.argv for r in recorded]
+    add = adds[0]
+    assert 'core.fsmonitor=false' in add.argv, add.argv
+    assert any(a.startswith('core.hooksPath=') for a in add.argv), add.argv
+    assert add.env is not None and 'GIT_DIR' not in add.env, sorted(add.env or {})
+    assert add.env.get('GIT_CONFIG_NOSYSTEM') == '1', add.env
 
 
 # ── B. Spawn plan (settings sources), real functions over tmp_path ───────────

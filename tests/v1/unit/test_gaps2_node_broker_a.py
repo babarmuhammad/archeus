@@ -114,6 +114,7 @@ def broker(send=None, transport=None, resolve=None, **kw):
         calls.append((up, addrs, method, path, dict(headers), body))
         return Resp(headers=[('content-type', 'application/json'), ('request-id', 'r1')])
 
+    kw.setdefault('limits', B.BrokerLimits(max_requests=3))
     b = B.Broker(core_instance='core1',
                  live=lambda bd, d: True,
                  credentials=lambda bd: {'x-api-key': UPSTREAM_KEY},
@@ -155,12 +156,6 @@ def nothing_happened(t, b, calls):
 
 # ── 1-2. the two refusals the source does not (yet) make: reported, kept strict ──
 
-@pytest.mark.xfail(strict=True, reason='broker.py:278 keeps `limits or BrokerLimits()` but '
-                                       'broker.py:290-301 validates only binding.limits: '
-                                       'Broker.limits is never read anywhere in archeus/, so a '
-                                       'broker composed without Core policy issues a grant even '
-                                       'though the Broker docstring (broker.py:270-271) promises '
-                                       '"a broker made without one issues nothing"')
 def test_a_broker_composed_without_cores_policy_issues_nothing():
     t = Transport()
     b, calls = broker(transport=t, limits=None)

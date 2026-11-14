@@ -141,7 +141,7 @@ class Seam:
             backend_of=self._backend_of, principal_of=lambda evidence: PRINCIPAL,
             bind=self._bind,
             broker_options=dict(core_instance='core1', live=lambda bd, d: True,
-                                credentials=lambda bd: {},
+                                credentials=lambda bd: {}, limits=B.BrokerLimits(max_requests=3),
                                 upstream_of=lambda a: B.Upstream('https://api.example.com'),
                                 resolve=lambda host, port: ['93.184.216.34']) if broker else None)
 

@@ -39,7 +39,7 @@ def binding(**kw):
 
 def broker(transport=None):
     return B.Broker(core_instance='core1', live=lambda bd, d: True,
-                    credentials=lambda bd: {},
+                    credentials=lambda bd: {}, limits=B.BrokerLimits(max_requests=3),
                     upstream_of=lambda a: B.Upstream('https://api.example.com'),
                     transport=transport or Transport(),
                     resolve=lambda host, port: ['93.184.216.34'])

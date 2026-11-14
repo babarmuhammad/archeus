@@ -305,6 +305,8 @@ class Broker:
         execution is revoked first: one live generation."""
         if binding.core_instance != self.core_instance:
             raise Refused(403, 'a binding from another Core instance')
+        if not (isinstance(self.limits.max_requests, int) and self.limits.max_requests > 0):
+            raise Refused(403, 'no request ceiling in Core policy: the grant is refused')
         if not (isinstance(binding.limits.max_requests, int) and binding.limits.max_requests > 0):
             raise Refused(403, 'no request ceiling: the grant is refused')
         limits = binding.limits
