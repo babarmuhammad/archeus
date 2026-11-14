@@ -590,12 +590,12 @@ MUTATIONS = [
      "'name': 'browser (%s)' % req.body['platform'],")],
      [SH_CRED]),
     ('P114', "the shell's credential is written to disk", [(GUI,
-     "    return client.Core(info['port'], out['token'])",
-     "    return open(discovery.core_json_path() + '.shell', 'w').write(out['token']) and "
-     "client.Core(info['port'], out['token'])")],
+     "    token = out.get('token')\n",
+     "    token = out.get('token')\n"
+     "    token and open(discovery.core_json_path() + '.shell', 'w').write(token)\n")],
      [SH_CRED]),
     ('P115', "the shell acts with the CLI's own admin token", [(GUI,
-     "    return client.Core(info['port'], out['token'])", "    return client.Core(info['port'], token)")],
+     "    token = out.get('token')\n", "    token = out.get('token') and token\n")],
      [SH_CRED]),
     ('P116', "the window's page gets less than the local grant", [(MAIN,
      "{'scopes': ['observe', 'control', 'approve', 'admin']}", "{'scopes': ['observe']}")],
