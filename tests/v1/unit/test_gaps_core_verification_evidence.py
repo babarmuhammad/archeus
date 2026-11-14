@@ -292,6 +292,7 @@ def test_confined_argv_records_the_absolute_normalised_path(tmp_path, monkeypatc
     # test — a mutation probe on scratch/mutation_check.py confirmed.)
     found = _tool(tmp_path / 'stage')
     monkeypatch.setenv('PATHEXT', '.EXE')
+    os.makedirs(str(tmp_path / 'stage' / 'nest'))   # POSIX resolves '..' only through a real directory
     tc = os.path.join(str(tmp_path), 'stage', '.', 'nest', '..')
     out = evidence.confined_argv('tool --check', [tc])
     assert out == [os.path.abspath(found), '--check']

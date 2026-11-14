@@ -40,6 +40,7 @@ from archeus.node.mxc_boundary import MxcBoundary
 from v1.unit.test_mxc_boundary import (Jobs, gate, make, outcome, script,  # noqa: F401
                                        seed_journal, sdk)
 from v1.unit.test_pv20_isolation import make_satisfying_request, os_tripwire  # noqa: F401
+from v1.unit.test_mxc_boundary import native_only  # noqa: F401
 
 #: the commit a verifier's checkout is exported from, and an import sits on
 SEED = 'b' * 40
@@ -249,6 +250,7 @@ def link_second_name(directory, name):
 
 # ── the verifier path: two fresh verifiers, one attempt each ──────────────────
 
+@native_only
 def test_two_fresh_verifiers_get_two_executions_of_their_own(checks):
     """Admission, identity, Job, checkout, environment and policy are each attempt's
     own: nothing is shared with, or reused from, another verifier's run."""
@@ -288,6 +290,7 @@ def test_two_fresh_verifiers_get_two_executions_of_their_own(checks):
         assert not checks.boundary.profile_exists(iso.Principal('verify', vid, n).key)
 
 
+@native_only
 def test_an_attempt_is_admitted_once_and_a_second_reading_of_it_is_refused(checks):
     verification_id = ids.new_id('verification')
     key = iso.Principal('verify', verification_id, 0).key
@@ -304,6 +307,7 @@ def test_an_attempt_is_admitted_once_and_a_second_reading_of_it_is_refused(check
     assert checks.recorded == [first, again]
 
 
+@native_only
 def test_the_verdict_is_the_workloads_exit_not_a_claim_the_process_printed(checks):
     checks.api.outcomes = script(
         [outcome(launcher_exit=0, agent_outcome=1,
@@ -317,6 +321,7 @@ def test_the_verdict_is_the_workloads_exit_not_a_claim_the_process_printed(check
 
 
 @pytest.mark.parametrize('forged', [None, True, '0', 1.0])
+@native_only
 def test_a_workload_outcome_that_is_not_an_exit_code_is_refused(checks, forged):
     """The outcome reader is Core's and bound to this process: a launcher answering
     anything else is no verdict, and the Job goes before the answer can be retried."""
@@ -359,6 +364,7 @@ def test_a_grant_with_a_second_name_for_one_file_is_refused_at_every_scan(checks
     assert len(checks.recorded) == 1
 
 
+@native_only
 def test_a_confined_check_answers_with_the_identity_and_job_it_ran_under(checks):
     verification_id = ids.new_id('verification')
     key = iso.Principal('verify', verification_id, 2).key
@@ -373,6 +379,7 @@ def test_a_confined_check_answers_with_the_identity_and_job_it_ran_under(checks)
 
 # ── the agent path ───────────────────────────────────────────────────────────
 
+@native_only
 def test_an_isolated_agent_launch_compiles_one_policy_and_spawns_once(tmp_path, sdk, gate):
     """One policy, one spawn, into the Job Core holds, with the environment Core built
     and no UI for the launcher to put up: a launch that fails has no interface to
@@ -462,6 +469,7 @@ def test_a_policy_mutated_towards_a_ui_or_an_egress_is_refused_at_the_gate(tmp_p
         mxc.validate_policy(mxc.MxcPolicy(raw))
 
 
+@native_only
 def test_an_edit_inside_the_one_grant_is_imported_as_data_and_locally_committed(
         tmp_path, sdk, monkeypatch, gate):
     """The agent's edit sits in its workspace and nowhere else; the import is Core's
@@ -615,6 +623,7 @@ def _importable(tmp_path, monkeypatch, seen):
     return ref_of
 
 
+@native_only
 def test_a_second_name_the_agent_made_in_its_workspace_is_never_imported(
         tmp_path, sdk, monkeypatch, gate):
     case = agent_case(tmp_path, sdk)
@@ -632,6 +641,7 @@ def test_a_second_name_the_agent_made_in_its_workspace_is_never_imported(
     assert [a[0] for a in seen if a[0] in ('fast-import', 'update-ref')] == []
 
 
+@native_only
 def test_a_repository_the_agent_planted_inside_its_workspace_is_never_imported(
         tmp_path, sdk, monkeypatch, gate):
     case = agent_case(tmp_path, sdk)
@@ -700,6 +710,7 @@ def test_native_mxc_admission_is_closed_and_the_transport_is_never_touched(tmp_p
 
 # ── stop and resume ──────────────────────────────────────────────────────────
 
+@native_only
 def test_a_stopped_execution_resumes_as_the_same_identity_with_a_new_process(
         tmp_path, sdk, no_process, gate):
     case = agent_case(tmp_path, sdk)
@@ -737,6 +748,7 @@ def test_a_stopped_execution_resumes_as_the_same_identity_with_a_new_process(
                            'end_job'] * 2
 
 
+@native_only
 def test_a_resume_is_refused_while_the_process_before_it_never_ended_with_a_completion(
         tmp_path, sdk, gate):
     # no resource reader: the end cannot be verified, so it is quarantined, not completed
@@ -768,6 +780,7 @@ def fresh_launch(case, **over):
     return local.MxcLaunch(**args)
 
 
+@native_only
 def test_an_mxc_launch_is_consumed_once_however_the_caller_asks(tmp_path, sdk, gate):
     case = agent_case(tmp_path, sdk)
     case.node.spawn(case.agent, case.spec, isolated=True)

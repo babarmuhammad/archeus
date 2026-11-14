@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -23,6 +24,13 @@ from .test_pv20_isolation import (FakeBoundary, make_satisfying_request, new_exe
                                   os_tripwire)  # noqa: F401  (the autouse tripwire)
 
 POLICY = 'C:\\protected\\policy-%d.json'
+# The fakes stand in for the Windows launcher, but the launch still goes through
+# mxc_native.create_suspended, which refuses any application path that is not an
+# absolute Windows path (ntpath.isabs + drive). Off Windows that refusal fires before
+# the fake is reached, so these tests only run where that path check can pass.
+native_only = pytest.mark.skipif(sys.platform != 'win32',
+                                 reason='MXC launch needs an absolute Windows application '
+                                        'path (mxc_native.create_suspended); Windows-only')
 
 
 def outcome(launcher_exit=0, agent_outcome=3, stdout=b'', stderr=b''):

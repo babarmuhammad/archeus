@@ -236,6 +236,15 @@ def _symlink_ok(tmp_path):
     return True
 
 
+def _case_insensitive(tmp_path):
+    with open(str(tmp_path / 'case-probe'), 'w'):
+        pass
+    try:
+        return os.path.exists(str(tmp_path / 'CASE-PROBE'))
+    finally:
+        os.remove(str(tmp_path / 'case-probe'))
+
+
 def _clean_env(tmp_path):
     """A Git that can see nobody's global or system configuration, in an environment
     that is told nothing about Git."""
@@ -553,11 +562,10 @@ class TestImportPlan:
         assert [p for _m, p, _o, _s in plan] == ['a.txt'] and counts['deleted'] == 0
         assert os.path.isfile(os.path.join(str(tmp_path / 'work'), '.git', 'HEAD'))
 
-    @pytest.mark.skipif(sys.platform == 'win32',
-                        reason='a case-insensitive file system answers the second name with '
-                               'the first file: nothing is left on disk for the case fold to '
-                               'catch, so the collision is genuinely not a behaviour there')
     def test_two_paths_one_case_insensitive_name_refuse(self, tmp_path):
+        if _case_insensitive(tmp_path):
+            pytest.skip('a case-insensitive file system answers the second name with the first '
+                        'file: nothing is left on disk for the case fold to catch')
         with pytest.raises(StoreError, match='two paths one case-insensitive name'):
             self._plan(tmp_path, [], files=[('a.txt', b'1'), ('A.txt', b'2')])
 
