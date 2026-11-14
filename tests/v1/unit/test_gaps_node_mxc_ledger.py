@@ -74,8 +74,11 @@ def test_init_file_is_owner_only(journal, monkeypatch):
     # or a dropped mode argument exposes the journal; asserted through the seam.
     seen = []
     real_open = open
+    real_write = ledger.config.write_atomic
 
     def fake_write_atomic(path, content, mode=None):
+        if str(path).endswith('.anchor'):
+            return real_write(path, content, mode=mode)
         seen.append((path, content, mode))
         with real_open(path, 'wb') as stream:
             stream.write(b'')

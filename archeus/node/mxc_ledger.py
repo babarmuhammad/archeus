@@ -101,10 +101,10 @@ def _validate(record, previous):
             raise ValueError('invalid requested policy digest')
 
 
-def read_records(data, execution_id):
+def read_records(data, execution_id, anchor=None):
     if not isinstance(data, bytes):
         return [], True
-    records, invalid = [], False
+    records, hashes, invalid = [], [], False
     for line in data.splitlines(keepends=True):
         try:
             envelope = json.loads(line)
@@ -120,8 +120,11 @@ def read_records(data, execution_id):
                 raise ValueError('invalid ledger record')
             _validate(record, records)
             records.append(record)
+            hashes.append(hashlib.sha256(line).hexdigest())
         except Exception:
             invalid = True
+    if anchor is not None and (anchor[0] > len(hashes) or hashes[anchor[0] - 1] != anchor[1]):
+        invalid = True
     return records, invalid
 
 
@@ -178,6 +181,26 @@ class Ledger:
             raise ValueError('invalid execution ID')
         return os.path.join(self.root, execution_id + '.jsonl')
 
+    def _anchor_path(self, execution_id):
+        return os.path.splitext(self._path(execution_id))[0] + '.anchor'
+
+    def _anchor(self, execution_id):
+        if not os.path.exists(self._anchor_path(execution_id)):
+            return None
+        with open(self._anchor_path(execution_id), 'rb') as stream:
+            value = json.loads(stream.read())
+        count, digest = value['records'], value['sha256']
+        if (type(count) is not int or count < 1 or not isinstance(digest, str)
+                or not re.fullmatch('[0-9a-f]{64}', digest)):
+            raise ValueError('invalid ledger anchor')
+        return count, digest
+
+    def _anchored(self, execution_id, data):
+        anchor = self._anchor(execution_id)
+        if anchor is None or not read_records(data, execution_id, anchor)[1]:
+            return data
+        return data if read_records(data, execution_id)[1] else b'invalid\n'
+
     def journals(self):
         result = {}
         for name in os.listdir(self.root):
@@ -185,7 +208,7 @@ class Ledger:
                 execution_id = name[:-6]
                 try:
                     with open(self._path(execution_id), 'rb') as stream:
-                        result[execution_id] = stream.read()
+                        result[execution_id] = self._anchored(execution_id, stream.read())
                 except Exception:
                     result[execution_id] = b'invalid\n'
         return result
@@ -206,7 +229,8 @@ class Ledger:
         with open(path, 'rb') as stream:
             data = stream.read()
         torn = op == 'quarantine' and bool(data) and not data.endswith(b'\n')
-        records, invalid = read_records(data + b'\n' if torn else data, execution_id)
+        records, invalid = read_records(data + b'\n' if torn else data, execution_id,
+                                        self._anchor(execution_id))
         if invalid and op != 'quarantine':
             raise ValueError('corrupt ledger requires quarantine')
         ops = [r['op'] for r in records]
@@ -232,6 +256,10 @@ class Ledger:
                 os.fsync(directory)
             finally:
                 os.close(directory)
+        anchor = {'records': len(records) + 1, 'sha256': hashlib.sha256(encoded).hexdigest()}
+        if not config.write_atomic(self._anchor_path(execution_id),
+                                   json.dumps(anchor, sort_keys=True), mode=0o600):
+            raise OSError('ledger anchor write failed')
         return record
 
     def create(self, execution_id, requested_policy, create, advance, *, planned=()):
