@@ -97,7 +97,7 @@ def _ev(o, t, kind, **kw):
     """
     e = {'o': o, 't': t, 'type': kind}
     for k, v in kw.items():
-        if v not in (None, '', 0):
+        if v not in (None, '') and (v != 0 or k == 'dur'):
             e[k] = v
     return e
 
