@@ -42,10 +42,27 @@ def _line(record):
                   'record': record}) + b'\n'
 
 
+FORMAT_VERSION = 1
+GENESIS = '0' * 64
+
+
+def _prev(records):
+    if records and 'version' in records[-1]:
+        return hashlib.sha256(_line(records[-1])).hexdigest()
+    return GENESIS
+
+
 def _validate(record, previous):
     op = record['op']
     ops = [r['op'] for r in previous]
     fields = {'execution_id', 'op', 'seq'}
+    if 'version' in record:
+        if type(record['version']) is not int or record['version'] != FORMAT_VERSION \
+                or record.get('prev') != _prev(previous):
+            raise ValueError('invalid chain')
+        fields |= {'version', 'prev'}
+    elif previous and 'version' in previous[-1]:
+        raise ValueError('unversioned record after versioned')
     if type(record['seq']) is not int:
         raise ValueError('invalid sequence')
     if op == 'intent':
@@ -199,7 +216,8 @@ class Ledger:
                    'quarantine': True}
         if not allowed.get(op, False) or 'quarantine' in ops:
             raise ValueError('invalid ledger transition')
-        record = dict(facts, execution_id=execution_id, op=op, seq=len(records))
+        record = dict(facts, execution_id=execution_id, op=op, seq=len(records),
+                      version=FORMAT_VERSION, prev=_prev(records))
         _validate(record, records)
         encoded = _line(record)
         with open(path, 'ab') as stream:

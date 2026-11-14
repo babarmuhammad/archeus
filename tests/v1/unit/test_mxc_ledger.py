@@ -1,3 +1,4 @@
+import hashlib
 from types import SimpleNamespace
 
 import pytest
@@ -194,8 +195,10 @@ def test_completion_and_disposal(journal):
     journal.dispose('e1', lambda owner: calls.append('dispose'),
                     lambda owner: calls.append('readback') or True)
     assert calls == ['dispose', 'readback']
-    assert records(journal)[-1] == {
-        'execution_id': 'e1', 'op': 'disposal', 'seq': 2, 'verified_absent': True}
+    rows = records(journal)
+    prev = hashlib.sha256(ledger._line(rows[1])).hexdigest()
+    assert rows[-1] == {'execution_id': 'e1', 'op': 'disposal', 'seq': 2, 'verified_absent': True,
+                        'version': ledger.FORMAT_VERSION, 'prev': prev}
     assert journal.reconcile(lambda pid: None, lambda *args: True) == {'e1': ledger.DEAD_CLEAN}
     journal.complete('e1', 0)
     assert journal.reconcile(lambda pid: pytest.fail('completed process queried'),

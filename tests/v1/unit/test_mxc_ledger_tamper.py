@@ -23,19 +23,31 @@ In-memory bytes only: no `Ledger` object, no tmp file, no process, no clock, no
 network, and every line ends with an explicit b'\\n' so the file is platform-neutral.
 """
 
+import hashlib
+
 import pytest
 
 from archeus.node import mxc_ledger as ledger
 
 DIGEST = 'a' * 64
-ROWS = [
+
+
+def chained(rows):
+    out, prev = [], ledger.GENESIS
+    for row in rows:
+        out.append(dict(row, version=ledger.FORMAT_VERSION, prev=prev))
+        prev = hashlib.sha256(ledger._line(out[-1])).hexdigest()
+    return out
+
+
+ROWS = chained([
     {'execution_id': 'e1', 'op': 'intent', 'seq': 0, 'requested_policy_digest': DIGEST,
      'planned': [], 'applied': [], 'observed': {}},
     {'execution_id': 'e1', 'op': 'ownership', 'seq': 1, 'pid': 41, 'create_time': 900,
      'requested_policy_digest': DIGEST, 'applied': [], 'observed': {}, 'owned': []},
     {'execution_id': 'e1', 'op': 'disposal', 'seq': 2, 'verified_absent': True},
     {'execution_id': 'e1', 'op': 'completion', 'seq': 3, 'outcome': 0},
-]
+])
 LINES = [ledger._line(r) for r in ROWS]
 
 
@@ -158,15 +170,14 @@ def test_a_torn_tail_is_detected():
     assert read(journal(*LINES)[:-1]) == (ROWS[:3], True)
 
 
-@pytest.mark.xfail(strict=True, reason="an edited field under a freshly recomputed sha is "
-                   "not detected: read_records checks each line against itself and 'seq' "
-                   "against the count of accepted lines (archeus/node/mxc_ledger.py:85-106) "
-                   "and no line holds a hash of the line before it "
-                   "(archeus/node/mxc_ledger.py:152)")
 @pytest.mark.parametrize('data', [
     journal(LINES[0], edited(1, pid=42), LINES[2], LINES[3]),
     journal(edited(0, planned=['x']), LINES[1], LINES[2], LINES[3]),
-    journal(LINES[0], LINES[1], LINES[2], edited(3, outcome=9)),
+    pytest.param(journal(LINES[0], LINES[1], LINES[2], edited(3, outcome=9)),
+                 marks=pytest.mark.xfail(strict=True, reason="the last record has no successor "
+                                         "to carry its hash, so an edit to it under a fresh sha "
+                                         "is not detected by the chain alone "
+                                         "(archeus/node/mxc_ledger.py:_prev)")),
 ], ids=['pid42', 'planned', 'outcome9'])
 def test_gap_an_edited_field_with_a_fresh_sha_is_not_detected(data):
     """Branch: none — that is the gap. `_line` (mxc_ledger.py:39-42) seals the record

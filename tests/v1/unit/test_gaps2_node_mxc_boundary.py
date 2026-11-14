@@ -21,6 +21,7 @@ child is `Child`, both recorded, and the Job/handle half is the `Jobs` fake of
 `test_mxc_boundary`, whose own OS mutation calls the autouse tripwire keeps armed.
 """
 
+import hashlib
 import os
 from types import SimpleNamespace
 
@@ -260,9 +261,12 @@ def test_a_restart_that_cannot_prove_an_absence_never_calls_a_death_clean(tmp_pa
     h.boundary.ledger, h.boundary.resource_reader = other, (
         lambda execution_id, owner: asked.append((execution_id, owner)) or True)
     assert h.boundary.reconcile() == {name: mxc_ledger.DEAD_CLEAN}
+    intent_row = mxc_ledger.read_records(other.journals()[name], name)[0][0]
+    prev = hashlib.sha256(mxc_ledger._line(intent_row)).hexdigest()
     assert asked == [(name, {'op': 'ownership', 'seq': 1, 'execution_id': name, 'pid': 1,
                              'create_time': 1, 'requested_policy_digest': '0' * 64,
-                             'applied': [], 'observed': {}, 'owned': []})]  # never the plan
+                             'applied': [], 'observed': {}, 'owned': [],
+                             'version': mxc_ledger.FORMAT_VERSION, 'prev': prev})]  # never the plan
     assert [r['op'] for r in mxc_ledger.read_records(other.journals()[name], name)[0]] == [
         'intent', 'ownership']
 
