@@ -5,7 +5,7 @@ pinned/reviewed folding, confidence maximum, promotion gates, score and sort).
 Selected candidates, not measured coverage. Ranked denial/fail-closed first,
 then boundaries, then error paths:
 
-1.  129-133    PREMISE, strict xfail: a second cluster member with confidence None
+1.  129-133    fixed: a second cluster member with confidence None
                makes max() raise TypeError and aborts the candidate list
 2.  117-119    only approved, pinned or pending lessons count; rejected, blank
                and missing status are excluded
@@ -56,7 +56,6 @@ def _by_text(rows):
     return {r['text']: r for r in rows}
 
 
-@pytest.mark.xfail(strict=True, reason="claude_sessions/conventions.py:129 max(hit[5], e.get('confidence', 0)) raises TypeError when a second cluster member carries confidence None, aborting the whole candidate list instead of counting it as 0")
 def test_null_confidence_counts_as_zero_and_does_not_abort(monkeypatch):
     _graphs(monkeypatch, [
         ('p1', [_lesson(RULE, conf=0.9)]),

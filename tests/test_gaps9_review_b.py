@@ -5,7 +5,7 @@ severity sort). T-1357 owns lines 29-80 in test_gaps9_review_a.py; not repeated.
 Selected candidates, not measured coverage. Ranked denial/fail-closed first,
 then boundaries, then error paths:
 
-1.  191        PREMISE, strict xfail: a non-numeric confidence ('high') raises
+1.  191        fixed: a non-numeric confidence ('high') raises
                ValueError out of run_review instead of the finding being dropped
 2.  191        confidence equal to min_confidence is kept; one below is dropped
 3.  184-189    a _claude_json result that is neither dict nor list gives
@@ -55,7 +55,6 @@ def _f(summary, confidence, severity='high', **extra):
     return d
 
 
-@pytest.mark.xfail(strict=True, reason="claude_sessions/review.py:191 int(f.get('confidence', 0) or 0) raises ValueError on a non-numeric confidence from the unvalidated _parse_json fallback, instead of dropping the finding")
 def test_non_numeric_confidence_is_dropped_not_raised(monkeypatch, tmp_path):
     _install(monkeypatch, {'findings': [_f('bad', 'high'), _f('real', 95)]})
     r = review.run_review(str(tmp_path), silent=True)

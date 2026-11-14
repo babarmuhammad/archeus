@@ -146,9 +146,15 @@ def parse_findings(text):
     return [f for f in data if isinstance(f, dict)]
 
 
+def _conf(f):
+    try:
+        return int(f.get('confidence', 0) or 0)
+    except (TypeError, ValueError):  # the prose fallback is not schema-checked
+        return None
+
+
 def _sev_key(f):
-    return (SEV_ORDER.get(str(f.get('severity', '')).lower(), 4),
-            -int(f.get('confidence', 0) or 0))
+    return (SEV_ORDER.get(str(f.get('severity', '')).lower(), 4), -_conf(f))
 
 
 # ── run ──────────────────────────────────────────────────────
@@ -188,7 +194,7 @@ def run_review(project_path, proj_folder=None, staged=False, base=None,
     else:
         raw = []
     raw = [f for f in (raw or []) if isinstance(f, dict)]
-    kept = [f for f in raw if int(f.get('confidence', 0) or 0) >= min_confidence]
+    kept = [f for f in raw if _conf(f) is not None and _conf(f) >= min_confidence]
     kept.sort(key=_sev_key)
     return {'findings': kept, 'empty': False, 'raw_count': len(raw),
             'min': min_confidence}
