@@ -482,9 +482,11 @@ class _Handler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length) if length else b''
         try:
             body = json.loads(raw.decode('utf-8', 'replace') or '{}')
+            if not isinstance(body, dict):
+                raise ValueError('not an object')
         except Exception:
             return _proxy.write_json(self, 400, {'type': 'error', 'error': {
-                'type': 'invalid_request_error', 'message': 'body is not JSON'}}) and None
+                'type': 'invalid_request_error', 'message': 'body is not a JSON object'}}) and None
 
         if path.endswith('/v1/messages/count_tokens'):
             # No OpenAI-shape equivalent. Claude Code falls back gracefully when
