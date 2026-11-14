@@ -149,3 +149,28 @@ def test_string_false_is_refused_and_nothing_is_saved(env):
         memhub.set_prompt_hook('enc', 'false')
     assert env.state['s'] == {}
     assert env.calls == []
+
+
+@pytest.mark.parametrize('value', ['false', 1, None])
+def test_set_worklog_refuses_a_non_bool_and_saves_nothing(value, monkeypatch):
+    saved, installed = [], []
+    monkeypatch.setattr(config, 'load_settings', lambda: {})
+    monkeypatch.setattr(config, 'save_settings', saved.append)
+    monkeypatch.setattr(hooks, 'across_accounts', installed.append)
+    with pytest.raises(ValueError):
+        memhub.set_worklog('enc', value)
+    assert saved == [] and installed == []
+
+
+def test_set_worklog_leaves_the_flag_off_when_the_install_fails(monkeypatch):
+    saved = []
+    monkeypatch.setattr(config, 'load_settings', lambda: {})
+    monkeypatch.setattr(config, 'save_settings', saved.append)
+
+    def boom(fn):
+        raise OSError('install failed')
+
+    monkeypatch.setattr(hooks, 'across_accounts', boom)
+    with pytest.raises(OSError):
+        memhub.set_worklog('enc', True)
+    assert saved == []

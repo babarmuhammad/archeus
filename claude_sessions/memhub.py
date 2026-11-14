@@ -242,12 +242,14 @@ def set_worklog(enc, on):
     """Per-project recent-work (claude-mem style) flag. Returns the state."""
     from .config import load_settings, save_settings
     from . import hooks as hooks_mod
-    s = load_settings()
-    s.setdefault('project_defaults', {}).setdefault(enc, {})['worklog'] = bool(on)
-    save_settings(s)
+    if not isinstance(on, bool):
+        raise ValueError('worklog flag is a boolean')
     if on:
         hooks_mod.across_accounts(hooks_mod.install_worklog_hook)
-    return bool(on)
+    s = load_settings()
+    s.setdefault('project_defaults', {}).setdefault(enc, {})['worklog'] = on
+    save_settings(s)
+    return on
 
 
 def set_memory_rules(on, project_path=None, proj_folder=None, mem=None):

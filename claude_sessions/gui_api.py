@@ -2031,7 +2031,10 @@ def api_worklog_get(q, body):
 def api_worklog_set(q, body):
     """Per-project recent-work memory on/off."""
     from . import hooks, memhub
-    on = memhub.set_worklog(body.get('enc', ''), body.get('on'))
+    try:
+        on = memhub.set_worklog(body.get('enc', ''), body.get('on'))
+    except ValueError as e:
+        raise BadRequest(str(e))
     return {'ok': True, 'on': on,
             'installed': hooks.across_accounts(hooks.worklog_hook_installed)}
 
