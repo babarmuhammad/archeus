@@ -327,12 +327,6 @@ def test_a_violated_boundary_escalates_to_the_strictest_outside_in_effect():
     assert inside['decision'] == 'ALLOW_WITHIN_BOUNDARY' and inside['checks']['outside'] == []
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='engine.py:85-86 keeps only specific[0] from the deepest level and '
-                          'adds locked rules only when _depth(r) < top_depth, so a locked rule '
-                          'that ties with another rule of the same decision never reaches '
-                          'effective: its boundary is never checked and which boundary binds '
-                          'is settled by the id at engine.py:41')
 def test_a_locked_boundary_holds_beside_another_rule_at_the_same_level():
     """engine.py:85-86 — `effective = [specific[0]] + [r for r in applicable if
     r['locked'] and _depth(r) < top_depth]`: only the one strictest deepest rule

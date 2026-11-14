@@ -252,9 +252,6 @@ def test_g5_a_finding_cannot_forge_its_origin_or_its_staleness(db):
     assert drift[1]['stale'] is True                            # the STALE one is labelled
 
 
-@pytest.mark.xfail(strict=True, reason='status.py:50-52 dereferences rows.get(...) without a '
-                     'None check: a last_inspection_id whose row is gone crashes status() with '
-                     'AttributeError instead of answering like the no-assessment case')
 def test_g6_the_answer_survives_an_assessment_row_that_is_gone(db):
     # status.py:50-52 — `if repo.last_inspection_id is not None:` then
     # `rows.get(...).entity` with no check that the row is there. The module's

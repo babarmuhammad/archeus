@@ -457,10 +457,6 @@ def test_needs_you_reads_first_and_within_a_headline_the_latest_reads_first(rdb,
 
 # ── error paths: a payload that omits what the headline reads ─────────────────
 
-@pytest.mark.xfail(strict=True, reason='digest.py:63 and 66 read payload["to"]/'
-                   'payload["from"] with []; an architecture.state_changed whose '
-                   'payload omits them raises KeyError and takes the whole digest '
-                   'down, while the same field is read with .get() at digest.py:86')
 @pytest.mark.parametrize('payloads', [
     [{}],                                                        # no `to` at all
     [{'to': 'CONSISTENT'}, {'from': 'DRIFTED', 'to': 'CONSISTENT'}],   # no `from`

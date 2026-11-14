@@ -308,13 +308,6 @@ def test_g9_a_row_that_lost_its_metadata_or_body_column_is_refused(raw, missing)
         rows.decode(entities.Mission, rec)
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='rows.py:99 takes a promoted column even when it is NULL, so '
-                          'the value the body still carries is lost: a column added by a '
-                          'migration (0007 plans.round_seq, 0012 accounts.home_key) is '
-                          'NULL in every row written before it, and those rows keep the '
-                          'value in their body; decode must prefer the body over a NULL '
-                          'column, which is not what `data.update` does today')
 def test_g10_a_null_promoted_column_does_not_erase_the_value_the_body_carries(raw):
     """rows.py:99: the promotion of a field is decided by the table, but the rows
     written before the column existed still hold the value in `body`. Reading the

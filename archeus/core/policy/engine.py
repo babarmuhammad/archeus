@@ -8,7 +8,7 @@ its own snapshot.
        (+ the implicit TASK contract rule outside the plan stage)
     2. none                                           -> DENY policy_missing
     3. specific = the deepest applicable (explicit before profile at a level)
-    4. effective = strictest(specific) + every LOCKED broader applicable rule
+    4. effective = strictest(specific) + every other LOCKED applicable rule
     5. decision = strictest(effective)
     6. ALLOW_WITHIN_BOUNDARY: inside every AWB boundary in effective, else
        the strictest `outside` (ASK | DENY)
@@ -83,7 +83,7 @@ def _one(action, cls, ctx):
     conflicts = ([r['id'] for r in specific]
                  if len({r['decision'] for r in specific}) > 1 else [])
     effective = [specific[0]] + [r for r in applicable
-                                 if r['locked'] and _depth(r) < top_depth]
+                                 if r['locked'] and r is not specific[0]]
     effective.sort(key=lambda r: (-R.STRICTNESS[r['decision']],) + _order(r))
     deciding = effective[0]
     decision, checks, boundary = deciding['decision'], None, None

@@ -213,18 +213,12 @@ def test_the_undated_opt_in_reaches_read_notes(store, tmp_path):
 
 # ── two source faults the tests above deliberately do not paper over ──
 
-@pytest.mark.xfail(strict=True, reason='_DATE checks digits only: the impossible calendar '
-                     'date 2026-13-45 in the name is imported as held_at instead of being '
-                     'refused — a fail-closed module must not store a date that cannot be')
 def test_an_impossible_calendar_date_is_refused(store, tmp_path):
     p = make_file(tmp_path, 'sync-2026-13-45.md', b'# Sync\nnotes\n')
     with pytest.raises(ValueError):
         ingest.read_notes(p)
 
 
-@pytest.mark.xfail(strict=True, reason='a non-None held_at skips all date parsing, so an '
-                     'empty-string held_at (routes.py imports b.get("held_at") verbatim) is '
-                     'kept as "": neither None-with-allow_undated nor a date the meeting has')
 def test_an_empty_held_at_is_refused_not_stored(store, tmp_path):
     p = make_file(tmp_path, 'sync-2026-05-04.md', b'# Sync\nnotes\n')
     with pytest.raises(ValueError):

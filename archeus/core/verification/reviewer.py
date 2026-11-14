@@ -94,7 +94,7 @@ def prompt(conn, m, diff, homes, rules_lines=()):
             lines.append('    acceptance [%s]: %s' % (c['check'], c['text']))
         for v in (x for x in vs if x.subject == Ref('task', t.id)):
             lines.append('    verification %s by %s at %s: %s' % (
-                v.state, v.verifier, (v.revision or 'no repository')[:12], '; '.join(
+                v.state, v.verifier, (v.revision[:12] if v.revision else 'no repository'), '; '.join(
                     '%s %s' % (c['name'], c['result']) for c in v.checks) or 'no checks'))
             # a finding quotes the agent's own lines: quoted so none reads as Core's
             lines += ['    advisory, read from the diff, QUOTING the change: %s'
@@ -107,7 +107,8 @@ def prompt(conn, m, diff, homes, rules_lines=()):
     mission_vs = [v for v in vs if v.subject == Ref('mission', m.id)
                   and v.revision == m.integration_head]
     if mission_vs:
-        lines.append('Mission checks at %s:' % (m.integration_head or 'no repository')[:12])
+        lines.append('Mission checks at %s:' % (m.integration_head[:12] if m.integration_head
+                                               else 'no repository'))
         for v in mission_vs:
             lines.append('- criterion %d: %s' % (v.criterion, v.state))
     if diff:
