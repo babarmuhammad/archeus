@@ -152,8 +152,9 @@ def listing(project_path=None, cfgdir=None):
                 s.pop('body', None)
                 s.update(builtin=False, scope=scope)
                 styles.append(s)
+    hits = [s for s in styles if s['name'] == active]
     for s in styles:
-        s['active'] = (s['name'] == active)
+        s['active'] = bool(hits) and s is hits[-1]  # project rows come last and win
     return styles
 
 
