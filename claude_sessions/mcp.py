@@ -185,7 +185,9 @@ def update_global_claude_md_mcp(mcp_name, tools_doc, cfgdir=None):
     existing = ''
     if os.path.exists(path):
         try:
-            existing = open(path, encoding='utf-8', errors='ignore').read()
+            # newline='' keeps CRLF outside the block; strict decoding refuses what it cannot round-trip
+            with open(path, encoding='utf-8', newline='') as f:
+                existing = f.read()
         except Exception:
             return False   # its text is unknown: not ours to replace
 
@@ -198,7 +200,8 @@ def update_global_claude_md_mcp(mcp_name, tools_doc, cfgdir=None):
         # the span stops before END's own line break, which existing[span[1]:] keeps
         final = existing[:span[0]] + section.rstrip('\n') + existing[span[1]:]
     elif existing:
-        final = existing.rstrip('\n') + '\n\n' + section
+        eol = '\r\n' if '\r\n' in existing else '\n'
+        final = existing.rstrip('\r\n') + eol * 2 + section
     else:
         final = '# Global Claude Context\n<!-- Edit freely — MCP sections auto-updated -->\n\n' + section
 

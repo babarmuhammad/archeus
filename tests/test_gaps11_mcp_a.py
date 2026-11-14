@@ -184,14 +184,16 @@ def test_two_same_name_pairs_with_another_block_between_refuse(md, monkeypatch):
     assert _get(md) == original
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="claude_sessions/mcp.py:188 reads CLAUDE.md in text mode, so every CRLF "
-           "outside the MCP block is written back as LF on every platform; "
-           "claude_md.py:103 reads with newline='' and keeps the bytes")
 def test_crlf_outside_block_survives_the_rewrite(md):
     """Branch: mcp.py:188 — bytes outside the block must survive the rewrite."""
     original = b'# Mine\r\nkeep this line\r\n\r\n'
     _put(md, original)
     assert mcp_mod.update_global_claude_md_mcp('svc', 'DOC') is True
     assert _get(md).startswith(b'# Mine\r\nkeep this line\r\n')
+
+
+def test_undecodable_file_is_refused_and_kept(md):
+    original = b'# Mine\n\xff\xfe not utf-8\n'
+    _put(md, original)
+    assert mcp_mod.update_global_claude_md_mcp('svc', 'DOC') is False
+    assert _get(md) == original
