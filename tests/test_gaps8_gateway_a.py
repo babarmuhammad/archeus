@@ -190,9 +190,6 @@ def test_exactly_one_writer_runs_and_stream_true_selects_the_stream_one(routed, 
     assert [c[0] for c in routed] == [expected]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/gateway.py:503 calls body.get on a JSON array, which line 484 '
-    'accepts as a body; the request dies instead of answering 400'))
 def test_a_json_array_body_is_a_400_invalid_request(routed):
     h = _handler(body=b'[]')
     h.do_POST()
