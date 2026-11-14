@@ -219,7 +219,11 @@ def test_a_slash_branch_in_a_real_worktree_merges_by_its_whole_name(tmp_path):
                        cwd=cwd, check=True, capture_output=True)
     repo, wt = tmp_path / 'repo', tmp_path / 'wt'
     repo.mkdir()
-    git(repo, 'init', '-q')
+    git(repo, 'init', '-q', '-b', 'main')
+    # the merge commit is made by the repo's own git, not by the -c of the helper above;
+    # a repo-local identity keeps CI's identity-less git and the user's global config out of it
+    git(repo, 'config', 'user.name', 't')
+    git(repo, 'config', 'user.email', 't@t')
     git(repo, 'commit', '-q', '--allow-empty', '-m', 'base')
     git(repo, 'worktree', 'add', '-q', '-b', 'feature/x', str(wt))
     (wt / 'f.txt').write_text('x')
@@ -365,7 +369,9 @@ def test_removing_a_worktree_refuses_to_discard_uncommitted_work(monkeypatch):
     monkeypatch.setattr(worktrees, 'dirty', lambda p: (4, 0))
     called = []
     monkeypatch.setattr(worktrees, '_git', lambda *a, **k: called.append(a) or '')
-    ok, msg = worktrees.remove('/wt')
+    # '/wt' is absolute only on Windows up to 3.12: since 3.13 ntpath.isabs('/wt') is False,
+    # so remove() would refuse for the wrong reason. An abspath is absolute on every version.
+    ok, msg = worktrees.remove(os.path.abspath('wt'))
     assert ok is False and '4 uncommitted' in msg
     assert called == [], 'git ran despite the refusal'
 
