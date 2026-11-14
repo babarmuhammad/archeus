@@ -27,8 +27,8 @@ Each names the source branch whose removal or inversion its assertion catches:
 
 Nothing here starts a process or reaches the OS: the job and launch seams are a recorder that
 fails on any call, subprocess is replaced by a function that fails, and the ledger is the real
-journal under tmp_path. Probe 10 is a strict xfail: the setup it depends on is a separate test
-that must pass, so a fixture mistake cannot hide behind the xfail.
+journal under tmp_path. Probe 10 was dropped: a re-create resets the grants on purpose, pinned by
+test_mxc_boundary.py::test_a_verified_grant_is_registered_once_per_path_for_the_launch.
 """
 
 import json
@@ -216,7 +216,7 @@ def test_a_released_name_is_created_again_and_says_it_did_not_exist(tmp_path):
 
 # ── 10: PREMISE, recreating a live profile keeps its grants (128-129) ──
 
-def test_recreating_a_live_profile_keeps_the_grant_it_holds_setup(tmp_path, monkeypatch):
+def test_recreating_a_live_profile_reports_that_it_existed(tmp_path, monkeypatch):
     monkeypatch.setattr(mxc, 'scan_grant', lambda path: None)
     b = make(tmp_path)
     eid = ids.new_id('execution')
@@ -228,18 +228,3 @@ def test_recreating_a_live_profile_keeps_the_grant_it_holds_setup(tmp_path, monk
     assert b.granted_to(path, sid) is True
     again = b.create_profile(eid)
     assert again['existed'] is True
-
-
-@pytest.mark.xfail(strict=True, reason='mxc_boundary.py:129 resets the grants of a live '
-                   'profile to [] on re-create, while create reports existed=True')
-def test_recreating_a_live_profile_keeps_the_grant_it_holds(tmp_path, monkeypatch):
-    monkeypatch.setattr(mxc, 'scan_grant', lambda path: None)
-    b = make(tmp_path)
-    eid = ids.new_id('execution')
-    b.create_profile(eid)
-    path = str(tmp_path / 'granted')
-    os.mkdir(path)
-    sid = b.derive_sid(eid)
-    assert b.grant_established(path, sid, 'rw') is True
-    b.create_profile(eid)
-    assert b.granted_to(path, sid) is True
