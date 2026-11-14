@@ -153,9 +153,6 @@ def test_export_never_overwrites_existing_file_and_uses_stamped_name(monkeypatch
     assert editor == [str(stamped)]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "transcript.py:227-229 writes the stamped name without an existence check, "
-    "so a second export in the same second overwrites the first"))
 def test_export_never_overwrites_when_stamped_name_also_exists(monkeypatch, tmp_path):
     proj, work, editor = _seed(monkeypatch, tmp_path, msgs=[_msg('user', 'hi')], name='Plan')
     monkeypatch.setattr(transcript, 'datetime', FixedDatetime)
@@ -224,9 +221,6 @@ def test_export_metadata_lines_carry_no_escape_bytes(monkeypatch, tmp_path):
     assert not any('\x1b' in ln for ln in meta)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "transcript.py:214 writes the title into the heading without render.strip_ansi, "
-    "so escape bytes reach the exported file"))
 def test_export_file_carries_no_escape_bytes(monkeypatch, tmp_path):
     proj, work, editor = _seed(monkeypatch, tmp_path, msgs=[_msg('user', 'hi')],
                                name=ESC_NAME, stats={'cwd': '\x1b[2Jdir'})
