@@ -8,18 +8,17 @@ boundaries, then error paths):
     label, remove, confirm or flash happens.
  2. 1315-1316 — remove declined at confirm(danger=True): remove_hook never runs.
  3. 1317-1318 — remove that fails to write flashes 'Write failed', never
-    'Hook removed'. Strict xfail on the failure flag: 1317-1318 omits ok=False.
+    'Hook removed'. The failure flash carries ok=False.
  4. 1295-1296 — toggle direction: state 'on' passes enabled False, 'off' True.
  5. 1296-1298 — toggle write failure flashes 'Write failed' once, no second
-    action. Strict xfail on the failure flag: 1296-1297 omits ok=False.
+    action. The failure flash carries ok=False.
  6. 1287-1289 — malformed selector (no ':', a non-integer index) raises
     ValueError before any menu opens.
  7. 1299-1304 — label with state 'off' reads hooks_disabled; an index past the
     block end returns without a prompt or set_label.
  8. 1308-1312 — label defaults fall back to _hook_label and category_of; a
-    blank name is saved as '' through set_label only. Strict xfail: ESC on the
-    Name prompt (ui.py:445-446 returns None) is saved as '' and clears the label
-    (hooks.py:1312).
+    blank name is saved as '' through set_label only. ESC on the
+    Name or Category prompt (None from ui.text_input) cancels without saving.
  9. 1317 — remove with state 'off' passes enabled False, so the disabled block
     is the one that loses the entry.
 10. 1305-1306 — the label path reads command keys from the selected entry only;
@@ -135,16 +134,6 @@ def test_remove_flashes_the_outcome_of_the_write(rig, removed, message):
     assert _flashes(rig)[-1][:2] == ('flash', message)
 
 
-def test_remove_write_failure_flashes_failure_once(rig):
-    rig.menu_answer = 'remove'
-    rig.removed_ok = False
-    hooks._toggle_or_remove('on:Stop:0', CFG)
-    assert _flashes(rig) == [('flash', 'Write failed', True)]
-
-
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/hooks.py:1317-1318: the remove failure flash omits ok=False, "
-    "so ui.flash draws the failure with the success tick (ui.py:126)"))
 def test_remove_write_failure_is_flashed_as_a_failure(rig):
     rig.menu_answer = 'remove'
     rig.removed_ok = False
@@ -165,17 +154,7 @@ def test_toggle_write_failure_flashes_once_and_stops(rig):
     rig.enabled_ok = False
     hooks._toggle_or_remove('on:Stop:0', CFG)
     assert _effects(rig) == [('enable', 'Stop', 0, False, CFG),
-                             ('flash', 'Write failed', True)]
-
-
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/hooks.py:1296-1297: the toggle failure flash omits ok=False, "
-    "so ui.flash draws the failure with the success tick (ui.py:126)"))
-def test_toggle_write_failure_is_flashed_as_a_failure(rig):
-    rig.menu_answer = 'toggle'
-    rig.enabled_ok = False
-    hooks._toggle_or_remove('on:Stop:0', CFG)
-    assert _flashes(rig) == [('flash', 'Write failed', False)]
+                             ('flash', 'Write failed', False)]
 
 
 @pytest.mark.parametrize('selector', ['Stop', 'on:Stop', 'on:Stop:x', 'on:Stop:', 'on:Stop:1:2'])
@@ -229,9 +208,6 @@ def test_blank_name_is_saved_as_empty_through_set_label_only(rig):
                              ('flash', 'Saved', True)]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/hooks.py:1308-1312: ESC on the Name prompt returns None "
-    "(ui.py:445-446), which is saved as '' and clears the stored name and category"))
 def test_escape_on_the_name_prompt_leaves_the_saved_label_alone(rig):
     rig.menu_answer = 'label'
     rig.doc = {'hooks': {'Stop': [A]}}

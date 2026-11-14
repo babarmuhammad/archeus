@@ -1293,8 +1293,8 @@ def _toggle_or_remove(sel, cfgdir=None):
     if act not in ('toggle', 'label', 'remove'):
         return
     if act == 'toggle':
-        flash("Toggled" if set_hook_enabled(event, idx, state == 'off', cfgdir)
-              else "Write failed")
+        ok = set_hook_enabled(event, idx, state == 'off', cfgdir)
+        flash("Toggled" if ok else "Write failed", ok=ok)
         return
     if act == 'label':
         d = _load(cfgdir)
@@ -1307,12 +1307,16 @@ def _toggle_or_remove(sel, cfgdir=None):
         cur = label_of(event, cmds)
         name = text_input("Name:", default=cur.get('name')
                           or _hook_label(entry, event))
+        if name is None:
+            return
         cat = text_input("Category:", default=cur.get('cat')
                          or category_of(entry, event))
-        set_label(event, cmds, name=name or '', cat=cat or '')
+        if cat is None:
+            return
+        set_label(event, cmds, name=name, cat=cat)
         flash("Saved", secs=1.2)
         return
     if not confirm("Remove this hook?", danger=True):
         return
-    flash("Hook removed" if remove_hook(event, idx, state == 'on', cfgdir)
-          else "Write failed")
+    ok = remove_hook(event, idx, state == 'on', cfgdir)
+    flash("Hook removed" if ok else "Write failed", ok=ok)
