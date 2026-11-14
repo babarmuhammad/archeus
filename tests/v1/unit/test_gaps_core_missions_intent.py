@@ -602,10 +602,6 @@ def test_a_harness_named_in_the_words_is_the_mission_s_own_preference(make):
     assert [d['message_id'] for d in rp['directives']] == [posted['message_id']]
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="a Message may hold an empty text but an Intent may not hold an "
-                          "empty utterance (entities.Intent.__post_init__), so the worker "
-                          "reads an empty turn into the brain and then cannot record it")
 def test_an_empty_turn_is_the_brain_s_and_is_still_read(make):
     # The grammar with nothing in it: no words to obey, so the message is neither
     # skipped, nor answered from nothing, nor an invented control. It is read, and the
