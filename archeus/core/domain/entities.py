@@ -25,6 +25,12 @@ from .actions import (ACTION_CLASSES, APPROVAL_KINDS, BOUNDARY_KEYS, DECISIONS, 
 from .values import ORIGINS, PRINCIPAL_SCOPES, SOURCE_KINDS, Ref
 
 _HEX64 = re.compile(r'[0-9a-f]{64}')
+
+
+def _hex64(v):
+    return isinstance(v, str) and _HEX64.fullmatch(v) is not None
+
+
 #: a commit id, SHA-1 or SHA-256, lowercase (PV-20 K2, T-049 §9)
 SEED_REVISION = re.compile(r'[0-9a-f]{40}|[0-9a-f]{64}')
 #: `_FROZEN` value meaning every field except the state
@@ -335,7 +341,7 @@ class RepositoryInspection(Entity):
     failed_at: str = None
 
     def _check(self):
-        if self.payload_sha256 is not None and not _HEX64.fullmatch(self.payload_sha256):
+        if self.payload_sha256 is not None and not _hex64(self.payload_sha256):
             raise ValueError('payload_sha256 is a sha256 hex digest')
 
 
@@ -387,7 +393,7 @@ class Meeting(Entity):
     attendees: tuple = ()
 
     def _check(self):
-        if self.notes_artifact_id is not None and not _HEX64.fullmatch(self.notes_artifact_id):
+        if self.notes_artifact_id is not None and not _hex64(self.notes_artifact_id):
             raise ValueError('Meeting.notes_artifact_id is an artifact sha256')
 
 
@@ -759,6 +765,10 @@ class Mission(Entity):
                         and d['id'] in rp.get(d['key'], ())):
                     raise ValueError('a directive is {%s}, naming an id in its list: %r'
                                      % (', '.join(DIRECTIVE_KEYS), d))
+        kind = ORIGIN_REF_KIND.get(self.origin)
+        if self.origin_ref and kind and not ids.is_id(self.origin_ref, kind):
+            raise ValueError('Mission.origin_ref is a %s id: its origin %r names one'
+                             % (kind, self.origin))
         b = self.planning_blocked
         if b is not None and not (isinstance(b, dict) and b.get('kind') in PLANNING_BLOCKS):
             raise ValueError('Mission.planning_blocked is {kind: %s, ...}: %r'
@@ -847,9 +857,10 @@ class Plan(Entity):
     state: str = None
 
     def _check(self):
-        if self.digest is not None and not _HEX64.fullmatch(self.digest):
+        if self.digest is not None and not _hex64(self.digest):
             raise ValueError('Plan.digest is a sha256 hex digest')
         if self.round_seq is not None and not (isinstance(self.round_seq, int)
+                                               and not isinstance(self.round_seq, bool)
                                                and self.round_seq >= 1):
             raise ValueError('Plan.round_seq is an event seq >= 1')
         for a in self.assumptions:
@@ -1050,7 +1061,7 @@ class Execution(Entity):
     state: str = None
 
     def _check(self):
-        if self.inventory_sha256 is not None and not _HEX64.fullmatch(self.inventory_sha256):
+        if self.inventory_sha256 is not None and not _hex64(self.inventory_sha256):
             raise ValueError('Execution.inventory_sha256 names an artifact (a sha256)')
         if self.isolated is not None and not isinstance(self.isolated, bool):
             raise ValueError('Execution.isolated is a bool or None')
@@ -1232,7 +1243,7 @@ class Verification(Entity):
                 raise ValueError('a check is {name, kind: %s, result: %s, ...}: %r'
                                  % ('|'.join(CHECK_KINDS), '|'.join(CHECK_RESULTS), c))
             sha = c.get('output_sha256')
-            if sha is not None and not _HEX64.fullmatch(sha):
+            if sha is not None and not _hex64(sha):
                 raise ValueError('a check output is a sha256 artifact id: %r' % (sha,))
         for c in self.criteria:
             if not (isinstance(c, dict) and c.get('result') in CRITERION_RESULTS
@@ -1305,7 +1316,7 @@ class Artifact(Entity):
     size: int
 
     def _check(self):
-        if not _HEX64.fullmatch(self.id):
+        if not _hex64(self.id):
             raise ValueError('an artifact id is its lowercase hex sha256')
 
 
@@ -1332,7 +1343,7 @@ class ArtifactRecord(Entity):
     label: str = ''
 
     def _check(self):
-        if not _HEX64.fullmatch(self.artifact_id):
+        if not _hex64(self.artifact_id):
             raise ValueError('ArtifactRecord.artifact_id names an artifact (a sha256)')
         if self.produced_by.kind != 'execution' or not ids.is_id(self.produced_by.id,
                                                                  'execution'):
@@ -1603,7 +1614,8 @@ class UsageSnapshot(Entity):
     resets_at: str = None
 
     def _check(self):
-        if not (isinstance(self.utilisation_pct, (int, float)) and self.utilisation_pct >= 0):
+        if not (isinstance(self.utilisation_pct, (int, float))
+                and not isinstance(self.utilisation_pct, bool) and self.utilisation_pct >= 0):
             raise ValueError('utilisation_pct must be a number >= 0')
 
 

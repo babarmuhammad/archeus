@@ -224,15 +224,19 @@ class Event:
             problems.append('workspace is not a workspace id')
         if self.project is not None and not ids.is_id(self.project, 'project'):
             problems.append('project is not a project id')
-        if self.seq is not None and not (isinstance(self.seq, int) and self.seq > 0):
+        if self.seq is not None and not (isinstance(self.seq, int)
+                                         and not isinstance(self.seq, bool) and self.seq > 0):
             problems.append('seq is a positive integer')
         if not isinstance(self.payload, dict):
             problems.append('payload is a JSON object')
         else:
             try:
-                json.dumps(self.payload)
+                json.dumps(self.payload, allow_nan=False)
             except (TypeError, ValueError):
                 problems.append('payload is not JSON-serialisable')
+            else:
+                if not _string_keys(self.payload):
+                    problems.append('payload is not JSON-serialisable: a key is not a string')
         if problems:
             raise ValueError('invalid %s event: %s' % (self.type, '; '.join(problems)))
 
@@ -249,12 +253,23 @@ class Event:
 
     @classmethod
     def from_envelope(cls, env):
-        scope = env.get('scope') or {}
-        return cls(seq=env.get('seq'), id=env['id'], type=env['type'], at=env['at'],
-                   actor=env['actor'], subject=env['subject'],
-                   workspace=scope.get('workspace', ids.GLOBAL_WORKSPACE),
-                   project=scope.get('project'), cause_chain=env.get('cause_chain', ()),
-                   visibility=env.get('visibility'), payload=env.get('payload'))
+        try:
+            scope = env.get('scope') or {}
+            return cls(seq=env.get('seq'), id=env['id'], type=env['type'], at=env['at'],
+                       actor=env['actor'], subject=env['subject'],
+                       workspace=scope.get('workspace', ids.GLOBAL_WORKSPACE),
+                       project=scope.get('project'), cause_chain=env.get('cause_chain', ()),
+                       visibility=env.get('visibility'), payload=env.get('payload'))
+        except (KeyError, TypeError, AttributeError) as e:
+            raise ValueError('invalid event envelope: %s' % (e,)) from e
+
+
+def _string_keys(v):
+    if isinstance(v, dict):
+        return all(isinstance(k, str) and _string_keys(x) for k, x in v.items())
+    if isinstance(v, (list, tuple)):
+        return all(_string_keys(x) for x in v)
+    return True
 
 
 def new_event(type, subject, actor, payload=None, **kw):

@@ -122,12 +122,6 @@ def _strict_json(text):
     {'x': float('nan')}, {'x': float('inf')}, {'x': float('-inf')},
     {'x': [float('nan')]}, {1: 'a'}, {'mixed': {2: 'b'}},
 ], ids=['nan', 'inf', '-inf', 'nan-in-list', 'integer-key', 'nested-integer-key'])
-@pytest.mark.xfail(strict=True, reason='events.py:229-230 probes with json.dumps(payload), '
-                   'whose default allow_nan=True writes the non-JSON literals NaN/Infinity, '
-                   'and whose key coercion renames a non-string key: such a payload passes '
-                   'the gate, is not parseable by a strict JSON reader (the SPA\'s JSON.parse '
-                   'on the SSE frame), and no longer equals itself after the envelope '
-                   'round-trip the class promises two lines below')
 def test_a_payload_that_is_not_really_json_never_survives_the_wire(payload):
     """The fail-closed answer is a refusal; the test passes only when the event
     cannot be built at all, so a source that quietly accepts it (today) or that
@@ -550,10 +544,6 @@ def test_a_seq_that_is_not_a_positive_integer_is_refused(seq):
     assert 'seq is a positive integer' in _refused(seq=seq)
 
 
-@pytest.mark.xfail(strict=True, reason='events.py:224 tests isinstance(self.seq, int) and a '
-                   'bool is a subclass of int, so seq=True passes the cursor guard and would '
-                   'be published as sequence number 1 (seq=False is refused only because it '
-                   'is not positive): the check must exclude bool the way it excludes float')
 def test_a_bool_is_not_a_sequence_number():
     with pytest.raises(ValueError) as got:
         _event(seq=True)
@@ -633,11 +623,6 @@ def test_the_envelope_is_json_with_the_shape_of_api_section_3_1():
 
 @pytest.mark.parametrize('missing', ['id', 'type', 'at', 'actor', 'subject'],
                          ids=['id', 'type', 'at', 'actor', 'subject'])
-@pytest.mark.xfail(strict=True, reason='events.py:250-251 indexes env["id"], env["type"], '
-                   'env["at"], env["actor"] and env["subject"] directly, so an envelope from '
-                   'an untrusted peer that is missing one of them raises KeyError instead of '
-                   'the ValueError every other invalid event is refused with; a caller that '
-                   'catches ValueError (the contract of __post_init__) crashes on it')
 def test_an_envelope_missing_a_required_field_is_refused_as_an_invalid_event(missing):
     env = _event().to_envelope()
     env.pop(missing)
@@ -665,10 +650,6 @@ def test_a_frame_missing_a_required_field_never_decodes_to_an_event(missing):
     ({'scope': 'ws_global'}, 'a scope that is not an object'),
     ({'cause_chain': 7}, 'a cause chain that is not iterable'),
 ], ids=['actor-no-id', 'actor-null', 'subject-string', 'scope-string', 'chain-int'])
-@pytest.mark.xfail(strict=True, reason='events.py:249-254 hands the envelope straight to '
-                   'cls(...) after env.get, so a scope that is not a mapping, a null actor or '
-                   'a bare subject string surfaces as AttributeError/TypeError from '
-                   'events.py:194-213 rather than a refusal, on input a peer controls')
 def test_an_envelope_whose_fields_are_the_wrong_shape_is_refused_as_an_invalid_event(broken):
     over, _why = broken
     env = _event().to_envelope()

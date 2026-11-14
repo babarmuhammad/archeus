@@ -40,7 +40,7 @@ def ahead(iso, now):
     """The written instant of a readable reset after *now* (an aware datetime), else
     None. The check and the written text use the same instant (T-106 r5)."""
     at = instant(iso)
-    if at is None:
+    if at is None or now is None:
         return None
     at = _ms(at)
     return None if at <= now else _written(at)
