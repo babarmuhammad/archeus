@@ -116,7 +116,7 @@ def run_headless(cmd, input_text=None, *, cwd=None, env=None, timeout=600,
                              cwd=cwd, env=env, creationflags=_proc.no_window_flags,
                              start_new_session=not _proc.WINDOWS)
     except Exception as e:
-        return Result(None, '', '', 'could not start %s: %s' % (cmd[:1], e), False)
+        return Result(None, '', '', 'could not start %s: %s' % (''.join(cmd[:1]), e), False)
     if on_spawn is not None:
         on_spawn(p)
     done = threading.Event()

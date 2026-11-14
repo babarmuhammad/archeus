@@ -100,9 +100,6 @@ def test_popen_failure_names_the_program_and_never_spawns_on_spawn(rig):
     assert rig.log == ['popen'] and rig.killed == [] and rig.recorded == []
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "llmcall.py:119 formats cmd[:1] (a list) with %s, so the argv0 shows in brackets: "
-    "\"could not start ['no-such-exe-xyz']: ...\""))
 def test_popen_failure_error_names_argv0_without_brackets(rig):
     rig.spawn_error = OSError('no such file')
     res = llmcall.run_headless(['no-such-exe-xyz'], 'x')
