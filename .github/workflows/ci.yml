@@ -45,8 +45,50 @@ jobs:
           $n = [int]$line.Matches[0].Groups[1].Value
           Write-Host "collected $n tests"
           if ($n -lt 1300) { throw "collected only $n tests — expected at least 1300" }
+      # P12 Windows CI diagnosis (diagnostic only; tests/ci_diag.py). The P2
+      # throughput test alone on a fresh runner, then inside the full suite,
+      # then alone again after it: separates the runner from what ran before.
+      # continue-on-error: these extra runs can neither fail nor pass the job;
+      # the gate is the full-suite step, unchanged.
+      # --basetemp (Windows only): pytest's basetemp, which holds every test
+      # database, on RUNNER_TEMP (D:) instead of %TEMP% (C:). Run 36318248029
+      # measured C: fsync at 1.7-6.7 ms p50 and D: at 0.10-0.30 ms; nothing
+      # else about the tests changes. Kept after the controlled run 36321061552:
+      # Windows P2 went from 67-96 to 1213-1580 commands/s in the suite with
+      # the 200/s floor untouched (p12-design-gate §31). On the command line, not PYTEST_ADDOPTS:
+      # pytest shell-splits that variable and eats the path's backslashes.
+      - name: 'Diagnostic: P2 throughput alone, before the suite'
+        continue-on-error: true
+        env:
+          ARCHEUS_CI_DIAG: ${{ runner.temp }}/diag-pre.jsonl
+          ARCHEUS_CI_JOB: ${{ matrix.os }}-py${{ matrix.python-version }}-pre
+        run: python -m pytest tests/v1/integration/test_writer.py::test_writer_throughput_is_at_least_500_commands_per_second -v -p no:cacheprovider ${{ runner.os == 'Windows' && format('--basetemp={0}/pytest-tmp', runner.temp) || '' }}
       - name: Run tests
-        run: python -m pytest tests/ -v
+        env:
+          ARCHEUS_CI_DIAG: ${{ runner.temp }}/diag-suite.jsonl
+          ARCHEUS_CI_JOB: ${{ matrix.os }}-py${{ matrix.python-version }}-suite
+        run: python -m pytest tests/ -v --durations=30 ${{ runner.os == 'Windows' && format('--basetemp={0}/pytest-tmp', runner.temp) || '' }}
+      - name: 'Diagnostic: P2 throughput alone, after the suite'
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          ARCHEUS_CI_DIAG: ${{ runner.temp }}/diag-post.jsonl
+          ARCHEUS_CI_JOB: ${{ matrix.os }}-py${{ matrix.python-version }}-post
+        run: python -m pytest tests/v1/integration/test_writer.py::test_writer_throughput_is_at_least_500_commands_per_second -v -p no:cacheprovider ${{ runner.os == 'Windows' && format('--basetemp={0}/pytest-tmp', runner.temp) || '' }}
+      - name: 'Diagnostic: summary'
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: python tools/ci_diag.py "${{ runner.temp }}/diag-pre.jsonl" "${{ runner.temp }}/diag-suite.jsonl" "${{ runner.temp }}/diag-post.jsonl"
+      - name: 'Diagnostic: upload'
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diag-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: |
+            ${{ runner.temp }}/diag-pre.jsonl
+            ${{ runner.temp }}/diag-suite.jsonl
+            ${{ runner.temp }}/diag-post.jsonl
       - name: Verify package imports
         run: python -c "import sys; sys.path.insert(0, '.'); import claude_sessions.main, claude_sessions.ui, claude_sessions.mcp, claude_sessions.claude_md, claude_sessions.session_menu, claude_sessions.system_prompt; print('imports OK')"
 
@@ -92,6 +134,19 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      # The wheel ships the V1 SPA, which is BUILT (archeus/api/static is
+      # git-ignored): a package-data glob that matches nothing is silent, so it
+      # is built here first and tools/check_wheel.py proves it arrived.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: clients/app/.nvmrc
+          cache: npm
+          cache-dependency-path: clients/app/package-lock.json
+      - name: Build the V1 SPA into archeus/api/static
+        working-directory: clients/app
+        run: |
+          npm ci
+          npm run build
       - run: python -m pip install build
       - run: python -m build --wheel
       # Install the built wheel into a clean venv and read the data files back
@@ -110,6 +165,18 @@ jobs:
           & $py -c "import claude_sessions.skills as s, glob, os, sys; d=s.bundled_templates_dir(); n=len(glob.glob(os.path.join(d,'*','SKILL.md'))); print('templates:', n, d); sys.exit(0 if n >= 8 else 1)"
           & $py -c "import claude_sessions.gui_html as g, sys; sys.exit(0 if len(g.PAGE) > 10000 and g.VENDOR_FILES else 1)"
           if ($LASTEXITCODE -ne 0) { throw 'the wheel is missing shipped data files' }
+          # the V1 package: every subpackage is listed by hand in pyproject, and
+          # the fake harness's agent is a script the adapter runs by path
+          & $py -c "import os, sys, archeus.core.ports, archeus.infra.paths, archeus.harnesses.registry, archeus.harnesses.fake as f; sys.exit(0 if os.path.isfile(f.AGENT) else 1)"
+          if ($LASTEXITCODE -ne 0) { throw 'the wheel is missing the archeus package' }
+          # the V1 schema is .sql package-data: without it a database opens with no tables
+          & $py -c "import sys, archeus.infra.db.migrate as m, archeus.infra.eventlog.consumers, archeus.core.application.commands; sys.exit(0 if m.migrations() else 1)"
+          if ($LASTEXITCODE -ne 0) { throw 'the wheel is missing the V1 migrations' }
+          # the V1 SPA: index.html and every asset it references, no maps,
+          # sources or node_modules — then the INSTALLED Core serves it with
+          # Node taken off PATH, because Node is a build-time dependency only
+          python tools/check_wheel.py $whl --python $py
+          if ($LASTEXITCODE -ne 0) { throw 'the wheel does not carry or serve the V1 SPA' }
 
       # The one command a fresh install types. Run from the INSTALLED console
       # script, not from the source tree: the point is that the released
@@ -133,6 +200,46 @@ jobs:
           $ver = (& $exe --version).Trim()
           $want = python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])"
           if ($ver -ne $want.Trim()) { throw "archeus --version says $ver, pyproject says $want" }
+
+  v1-client:
+    # The V1 SPA (clients/app): its build, its dependency audit, and the
+    # skeleton in a real browser against a real Core. Node lives in this job
+    # and the package job only; the Python `test` job stays Node-free, and the
+    # generated client's freshness is checked there, in Python.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: clients/app/.nvmrc
+          cache: npm
+          cache-dependency-path: clients/app/package-lock.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Build and audit the SPA
+        working-directory: clients/app
+        run: |
+          npm ci
+          npm run build
+          npm audit --audit-level=high
+      - name: The client's unit tests
+        # node --test with type stripping (p16-design-gate D19): the
+        # presentation, connection, invalidation, relation and command logic
+        working-directory: clients/app
+        run: npm test
+      - run: python -m pip install pytest playwright
+      - run: python -m playwright install --with-deps chromium
+      - name: The SPA skeleton in a real browser
+        # ARCHEUS_E2E=1 turns a missing build or browser into a failure, and
+        # the grep refuses a run that passed nothing: a suite that collects
+        # nothing reports success.
+        env:
+          ARCHEUS_E2E: '1'
+        run: |
+          set -o pipefail
+          python -m pytest tests/v1/e2e tests/v1/judge/test_g03_one_model.py -v | tee e2e.txt
+          grep -Eq '[1-9][0-9]* passed' e2e.txt
 
   plugin:
     # The same validation the community plugin review runs. Cheap, and the

@@ -365,15 +365,9 @@ def extract_model():
 
 
 def _budget_args():
-    """`--max-budget-usd`, when the user has set a cap. A timeout bounds how
-    LONG one of archeus's own calls may run; this bounds what it may spend,
-    and subagent spend counts toward the same cap."""
-    try:
-        from .config import load_settings
-        cap = float(load_settings().get('headless_budget_usd') or 0)
-    except Exception:
-        return []
-    return ['--max-budget-usd', f'{cap:g}'] if cap > 0 else []
+    """`--max-budget-usd`, when the user has set a cap (moved to llmcall, P6)."""
+    from .llmcall import budget_args
+    return budget_args()
 
 
 def _provider_headless(model):
@@ -484,9 +478,8 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
     global last_call_error, last_call_cancelled
     last_call_cancelled = False
     from .config import get_claude_exe
-    from .sessions import HEADLESS_MARK
+    from .llmcall import build_headless_args
     last_call_error = ''
-    prompt = (prompt or '') + '\n\n' + HEADLESS_MARK
     from . import harnesses as _h
     hid = headless_harness()
     if hid != _h.DEFAULT:
@@ -503,7 +496,7 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
             return ''
         from .config import load_settings, account_env
         m = (load_settings().get('headless_harness_model') or '').strip()
-        args = _h.impl('headless_argv', hid)(exe, m)
+        args, prompt = build_headless_args(exe, prompt, m, harness=hid)
         env = account_env(_h.home_dir(hid))
     else:
         exe = get_claude_exe()
@@ -514,7 +507,6 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
             from . import events
             events.record('memory', last_call_error)
             return ''
-        args = [exe, '-p', '--max-turns', '20', '--disallowedTools', 'Write,Edit,NotebookEdit,Bash']
         m = extract_model() if model is None else (model or '').strip()
         try:
             env, m = _provider_headless(m)
@@ -534,10 +526,7 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
         # FOREGROUND path an account at all — it used to pass none.
         if env is None:
             env = getattr(_tls, 'env', None)
-        if m:
-            args += ['--model', m]
-        args += _budget_args()
-        args += list(extra_args)
+        args, prompt = build_headless_args(exe, prompt, m, _budget_args(), extra_args)
     if getattr(_tls, 'silent', False):
         from .gui_api import _run_cancellable
         try:
@@ -549,6 +538,11 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
         args, prompt, crumbs, label, timeout=timeout, cwd=cwd, env=env)
     last_call_cancelled = bool(cancelled)
     return out or ''
+
+
+# Moved to the UI-free `llmcall` (P6 seam): V1's claude_code adapter parses its
+# call results with the same two functions.
+from .llmcall import parse_json as _parse_json, unwrap_structured  # noqa: E402,F401
 
 
 #: why the last headless call failed, or ''. Same module-level-latch idiom as
@@ -599,61 +593,8 @@ def _claude_json(prompt, cwd, schema, **kw):
         '--output-format', 'json', '--json-schema', json.dumps(schema)), **kw)
     if not raw:
         return None
-    env = None
-    try:
-        env = json.loads(raw.strip())
-    except Exception:
-        env = None
-    if isinstance(env, dict):
-        try:
-            c = env.get('total_cost_usd')
-            last_call_cost = float(c) if isinstance(c, (int, float)) else None
-        except Exception:
-            last_call_cost = None
-        if isinstance(env.get('structured_output'), (dict, list)):
-            return env['structured_output']
-        # envelope parsed but carried no structured output — the text result is
-        # still the model's answer, so try it the old way before giving up
-        if isinstance(env.get('result'), str):
-            return _parse_json(env['result'])
-    return _parse_json(raw)
-
-
-def _parse_json(text):
-    """Recover JSON from model prose. The FALLBACK path — _claude_json asks
-    Claude Code to enforce a schema and only lands here when that is
-    unavailable.
-
-    Tries the whole (de-fenced) text first, because a well-behaved answer needs
-    no surgery, and only then slices to the outermost object or array. The
-    array case matters: bracket-slicing a two-element array on '{'..'}' yields
-    '{...}, {...}', which is not JSON, so a list-shaped answer used to come back
-    as None from here even though it parsed perfectly as-is.
-    """
-    if not text:
-        return None
-    t = text.strip()
-    if '```' in t:                       # strip code fences
-        import re
-        m = re.search(r'```(?:json)?\s*(.*?)```', t, re.S)
-        if m:
-            t = m.group(1).strip()
-    for cand in (t, _slice_between(t, '{', '}'), _slice_between(t, '[', ']')):
-        if not cand:
-            continue
-        try:
-            return json.loads(cand)
-        except Exception:
-            continue
-    return None
-
-
-def _slice_between(t, open_ch, close_ch):
-    """The outermost open_ch..close_ch span, or '' when there isn't one."""
-    if open_ch not in t or close_ch not in t:
-        return ''
-    i, j = t.index(open_ch), t.rindex(close_ch)
-    return t[i:j + 1] if j > i else ''
+    parsed, last_call_cost = unwrap_structured(raw)
+    return parsed
 
 
 #: The shape _extract asks for, as a JSON Schema Claude Code enforces. The

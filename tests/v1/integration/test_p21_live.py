@@ -1,0 +1,289 @@
+"""P21 slice B (ADR-0043 §2-§4, ADR-0048 D-25.4; orchestration G6, G8, G12,
+G13; R13-06): own calls in flight in `live_work`, each account's consumption
+and effective policy in `/v1/accounts`, and the `status` verb in words. Fake
+adapters and the real database only."""
+
+import time
+
+import pytest
+
+from archeus.api import schemas
+from archeus.cli.tui import present as P
+from archeus.core.application import calls as C, conversation as CV, live, queries, resources
+from archeus.core.domain import entities
+from archeus.core.homes import Homes
+from archeus.harnesses import base
+from archeus.harnesses.fake import FakeCaller
+from archeus.infra.db import rows
+
+from v1.integration.test_account_protection import snapshot_call
+from v1.integration.test_routing import Rig
+
+
+@pytest.fixture
+def r(db):
+    return Rig(db)
+
+
+def call(r, purpose='planner', max_run_s=1200, source=None):
+    """An own call recorded and not ended: in flight until its maximum run."""
+    req, snap, _ = snapshot_call(r, [FakeCaller('fake')])
+    return r.do(resources.record_call_route, who=r.system, purpose=purpose,
+                source=source or {'kind': 'mission', 'id': 'msn_x'}, workspace_id='ws_global',
+                project_id=None, requirements=dict(req, max_run_s=max_run_s),
+                snapshot=snap)['route_decision_id']
+
+
+def read(r, fn, *a, **kw):
+    with r.db.read() as conn:
+        return fn(conn, *a, **kw)
+
+
+def views(r, now=None):
+    """Every account's view, as `/v1/accounts` serves it, read at *now*."""
+    now = time.time() if now is None else now
+    with r.db.read() as conn:
+        work = live.live_work(conn, now=now)
+        return {row.entity.id: resources.account_view(conn, row, work, now)
+                for row in rows.where(conn, entities.Account)}
+
+
+# ── G6: one live derivation ─────────────────────────────────────────────────
+
+def test_g6_live_work_is_the_live_executions_then_the_own_calls_without_an_outcome(r):
+    a = r.account('A')
+    mid = r.ready(title='Ship it')
+    r.dispatch(mid)                                     # an INTENT execution
+    (e,) = r.all(entities.Execution, mission_id=mid)
+    flying = call(r, source={'kind': 'mission', 'id': mid})
+    done = call(r, purpose='brain')
+    r.do(C.end_call, who=r.system, route_decision_id=done, outcome={'state': 'ok'})
+    within = call(r, purpose='planner', max_run_s=600)
+    lapsed = call(r, purpose='lesson', max_run_s=1)
+    later = time.time() + 5                             # past the lesson's maximum run only
+    work = read(r, live.live_work, now=later)
+    assert [(w['kind'], w['id']) for w in work] == [
+        ('execution', e.id), ('own_call', flying), ('own_call', within)]
+    for w in work:
+        schemas.validate(w, schemas.TYPES['LiveItem'])
+    own = work[1]
+    assert (own['purpose'], own['account_id'], own['mission_id'], own['mission_title']) == (
+        'planner', a, mid, 'Ship it')
+    assert (own['state'], own['task_id'], own['attempt'], own['context']) == (None,) * 4
+    assert lapsed not in [w['id'] for w in work]
+    assert within in [w['id'] for w in read(r, live.live_work)]   # still within its run, read now
+    assert read(r, live.live_work, project_id='prj_none', now=later) == []
+    # the account's count is the same derivation (ledger_totals.running)
+    assert views(r, later)[a]['ledger']['running'] == len(work)
+
+
+def test_g6_the_status_verb_names_exactly_what_status_live_lists(r):
+    r.account('A')
+    mid = r.ready()
+    r.dispatch(mid)
+    call(r, purpose='knowledge_extraction')
+    text, links = r.do(lambda tx, actor: CV._status(tx, None))
+    work = read(r, live.live_work)
+    said = text.split(' Running now: ')[1].rstrip('.').split('; ')
+    assert len(said) == len(work) == 2
+    assert said[1] == 'an own call for the knowledge extraction (%s)' % work[1]['account_id']
+    assert [x['ref']['id'] for x in links if x['ref']['kind'] == 'execution'] == [work[0]['id']]
+
+
+# ── G8: own calls visible, still ────────────────────────────────────────────
+
+def test_g8_an_own_call_in_flight_is_listed_and_counted_on_its_account(r):
+    a = r.account('A', priority=1)
+    b = r.account('B', priority=2)
+    flying = call(r)
+    v = views(r)
+    schemas.validate(v[a], schemas.TYPES['Account'])
+    assert [c['id'] for c in v[a]['consumers']] == [flying] and v[a]['ledger']['running'] == 1
+    assert (v[b]['consumers'], v[b]['ledger']['running']) == ([], 0)   # only its own account
+    v = v[a]
+    assert [set(c) for c in v['consumers']] == [set(resources.CONSUMER_FIELDS)]   # summary only
+    assert P.consumers_text(v['consumers']) == 'an own call for the planner'
+    r.do(C.end_call, who=r.system, route_decision_id=flying, outcome={'state': 'ok'})
+    v = views(r)[a]
+    assert (v['consumers'], v['ledger']['running']) == ([], 0)
+    assert P.consumers_text(v['consumers']) == 'nothing'
+    # it animates nothing: no execution frame is ever written for an own call
+    assert read(r, lambda c: c.execute("SELECT COUNT(*) FROM events WHERE type LIKE "
+                                       "'execution.%'").fetchone()[0]) == 0
+
+
+# ── G12: unknown stays unknown ──────────────────────────────────────────────
+
+def test_g12_a_reading_that_is_missing_is_said_unknown_never_a_number(r):
+    a = r.account('A')
+    v = views(r)[a]
+    assert v['usage'] is None                           # no window observed: no number
+    assert P.consumption_text(v['ledger']) == '0 tokens · $0.00'   # nothing ran: a known 0
+    call(r, purpose='brain', max_run_s=1)               # ran, never wrote its row
+    v = views(r, time.time() + 5)[a]
+    assert v['ledger']['complete'] == {'tokens': False, 'cost': False}
+    assert P.consumption_text(v['ledger']) == 'tokens unknown · cost unknown'
+
+
+def test_g12_work_in_flight_is_unknown_not_a_zero_and_accounts_lists_the_same(r):
+    a = r.account('A')
+    r.dispatch(r.ready())                               # an execution whose usage is not written yet
+    v = views(r)[a]
+    schemas.validate(v, schemas.TYPES['Account'])
+    assert v['ledger'] == {'tokens_today': 0, 'cost_today': 0, 'running': 1,
+                           'complete': {'tokens': False, 'cost': False}}
+    assert P.consumption_text(v['ledger']) == 'tokens unknown (1 running) · cost unknown (1 running)'
+    with r.db.read() as conn:
+        listed = {x['id']: x for x in resources.accounts(conn)}
+    assert (listed[a]['ledger'], [c['id'] for c in listed[a]['consumers']]) == (
+        v['ledger'], [c['id'] for c in v['consumers']])
+
+
+def test_r13_06_the_status_says_how_many_more_run_past_the_ten_it_names(r):
+    r.account('A')
+    for _ in range(11):
+        call(r)
+    text, _links = r.do(lambda tx, actor: CV._status(tx, None))
+    assert text.endswith(' (+1 more).')
+    assert text.count('an own call for the planner') == 10
+
+
+# ── G13: effective policy parity (P21 half) ─────────────────────────────────
+
+def test_g13_the_effective_policy_read_is_what_the_router_decided_from(r):
+    a = r.account('A', priority=3, budgets={'concurrency': 2}, fallback='deny')
+    b = r.account('B', consumption='last_resort')
+    mid = r.ready()
+    r.dispatch(mid)
+    (task_rd,) = r.rds(mission_id=mid)
+    own_rd = r.one(entities.RouteDecision, id=call(r))
+    v = views(r)
+    for rd in (task_rd, own_rd):
+        fed = {x['id']: x['policy'] for x in rd.input_snapshot['accounts'] if x.get('registered')}
+        assert fed == {a: v[a]['policy'], b: v[b]['policy']}
+    assert (v[a]['policy']['priority'], v[a]['policy']['budgets'], v[b]['policy']['consumption']) \
+        == (3, {'concurrency': 2}, 'last_resort')
+
+
+# ── R13-06: `status` in words ───────────────────────────────────────────────
+
+def test_r13_06_status_says_each_state_in_the_words_the_clients_show(r):
+    r.account('A')
+    mid = r.ready(title='Ship the fix')
+    r.dispatch(mid)
+    text, _links = r.do(lambda tx, actor: CV._status(tx, None))
+    assert 'Ship the fix (Executing)' in text and 't1 attempt 1 (Starting, context' in text
+    assert 'EXECUTING' not in text and 'INTENT' not in text
+
+
+def test_s3_core_never_imports_the_tui_and_says_the_same_words():
+    """Core says the state words from its own generated copy; the TUI's copy is the same table."""
+    import pathlib
+    import re
+    from archeus.cli.tui import _tables
+    from archeus.core.domain import words
+    core = pathlib.Path(resources.__file__).resolve().parents[2] / 'core'
+    assert [p.name for p in core.rglob('*.py')
+            if re.search(r'from \.+cli\b|archeus\.cli\b', p.read_text(encoding='utf-8'))] == []
+    assert words.LABELS == _tables.LABELS
+
+
+def _keys(x):
+    if isinstance(x, dict):
+        for k, v in x.items():
+            yield k
+            yield from _keys(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _keys(v)
+
+
+def _strings(x):
+    if isinstance(x, dict):
+        for v in x.values():
+            yield from _strings(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _strings(v)
+    elif isinstance(x, str):
+        yield x
+
+
+def test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home(r, tmp_path):
+    """An account's home is a path on this machine: no form of it reaches the view."""
+    home = str(tmp_path / 'Work-Claude')
+    a = r.account('A', home_ref=home)
+    with r.db.read() as conn:
+        listed = resources.accounts(conn)
+        one = resources.account_view(conn, rows.get(conn, entities.Account, a))
+    shown = list(_strings([listed, one]))       # every string value, unescaped
+    for form in (home, str(tmp_path), base.canonical_home(home)):
+        assert not any(form in v for v in shown), form
+    assert all(k not in x for x in listed + [one] for k in resources.HOME_FIELDS)
+
+
+def test_owner_2026_10_21_route_decision_reads_name_no_home_field(r, tmp_path):
+    """The route-decision reads (list and one) leave out the fields that name a home: the
+    snapshot's `ref` and `home_ref`, and `account_ref` (decision, candidates, usage rows).
+    Field projection only: the stored rows keep all of them."""
+    home = str(tmp_path / 'Work-Claude')
+    r.account('A', home_ref=home)
+    rid = call(r)
+    r.do(C.end_call, who=r.system, route_decision_id=rid, outcome={'state': 'ok'})
+    with r.db.read() as conn:
+        stored = rows.get(conn, entities.RouteDecision, rid).entity
+        used = rows.where(conn, entities.UsageLedger, route_decision_id=rid)
+        listed = queries.route_decisions(conn)
+        one = queries.get_route_decision(conn, rid)
+    # precondition: the stored rows name the home, so only the projection removes it
+    assert stored.account_ref == home and used and used[0].entity.account_ref == home
+    assert any(a.get('home_ref') == home and a.get('ref') == home
+               for a in stored.input_snapshot['accounts'])
+    for body in (listed, one):
+        assert not {'home_ref', 'home_key', 'account_ref'} & set(_keys(body))
+    assert all('ref' not in a for a in one['input_snapshot']['accounts'])
+    assert not any(home in v for v in _strings([listed, one]))
+
+
+def test_owner_2026_10_21_the_default_account_fields_are_left_out():
+    """A default account's snapshot entry carries its home in `ref` and `home_ref`."""
+    default = {'id': None, 'harness': 'fake', 'ref': 'fake:C:/Default', 'home_ref': 'C:/Default'}
+    got = queries._public_decision({'input_snapshot': {'accounts': [default]},
+                                    'account_ref': 'fake:C:/Default',
+                                    'candidates': [{'harness': 'fake', 'account_ref': 'fake:C:/Default'}]},
+                                   Homes([], [('fake', 'fake:C:/Default', 'C:/Default')], shorts=lambda _: None))
+    assert got['input_snapshot']['accounts'] == [{'id': None, 'harness': 'fake'}]
+    assert 'account_ref' not in got and got['candidates'] == [{'harness': 'fake'}]
+
+
+def test_owner_2026_10_21_live_work_names_no_home_field(r, tmp_path):
+    """An own call in flight leaves out `account_ref` (the home for a registered account)."""
+    home = str(tmp_path / 'Work-Claude')
+    a = r.account('A', home_ref=home)
+    flying = call(r)
+    with r.db.read() as conn:
+        stored = rows.get(conn, entities.RouteDecision, flying).entity
+        work = live.live_work(conn)
+    assert stored.account_ref == home                    # the row keeps it
+    (item,) = work
+    assert item['id'] == flying and item['account_id'] == a and 'account_ref' not in item
+    assert not any(home in v for v in _strings(work))
+
+
+def test_owner_2026_10_21_the_mission_trace_reads_no_home_field(r, tmp_path):
+    """The mission trace's route decisions come from the same projection as the route-decision
+    reads (trace.py imports queries.route_decisions): no home field, though the row keeps it."""
+    from archeus.core.application import trace
+    home = str(tmp_path / 'Work-Claude')
+    r.account('A', home_ref=home)
+    mid = r.mission('Trace it')
+    rid = call(r, source={'kind': 'mission', 'id': mid})
+    r.do(C.end_call, who=r.system, route_decision_id=rid, outcome={'state': 'ok'})
+    with r.db.read() as conn:
+        stored = rows.get(conn, entities.RouteDecision, rid).entity
+        t = trace.trace(conn, mid, r.registry)
+    assert stored.account_ref == home                    # precondition: the row names the home
+    (d,) = t['route_decisions']
+    assert d['id'] == rid
+    assert not {'home_ref', 'home_key', 'account_ref'} & set(_keys(t['route_decisions']))
+    assert not any(home in v for v in _strings(t['route_decisions']))

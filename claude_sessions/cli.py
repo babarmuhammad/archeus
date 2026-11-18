@@ -42,6 +42,16 @@ COMMANDS
                              from the Hooks screen rather than wiring it by hand.
   --failover-stop            stop the background model-failover proxy.
 
+V1 (preview)
+  core [--open]              run Archeus Core, the V1 control plane, in the
+                             foreground on http://127.0.0.1:7337 (--open also
+                             opens its app in the browser). Walking skeleton:
+                             it runs a fake harness and a stub policy only.
+  status                     is Core running? Exit 0 yes, 1 no.
+  gui                        the V1 desktop app: Core's app in a window, with a tray
+                             (Open, Pause all, Emergency stop, Quit). Starts Core
+                             if it is not running. (--gui is the workspace GUI.)
+
 OPTIONS
   -h, --help                 this text
   -V, --version              print the installed archeus version
@@ -103,10 +113,21 @@ def print_version():
     print(_version() or 'unknown')
 
 
+#: The V1 verbs (archeus/cli/main.py VERBS, which a test keeps equal): Core and
+#: its liveness, plus the verbs reserved for later phases. Spelled out here so
+#: the dispatch imports nothing until one of them is typed.
+V1_VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
+            'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation', 'devices',
+            'tui', 'gui', 'executions', 'doctor')
+
+
 def run():
     if len(sys.argv) >= 2 and sys.argv[1] == 'statusline':
         from .statusline import main
         raise SystemExit(main(sys.argv[2:]))
+    if len(sys.argv) >= 2 and sys.argv[1] in V1_VERBS:
+        from archeus.cli.main import main as v1
+        raise SystemExit(v1(sys.argv[1:]))
     if len(sys.argv) >= 2 and sys.argv[1] in ('--help', '-h', 'help'):
         print_help()
         return

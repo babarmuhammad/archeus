@@ -49,6 +49,11 @@ def live(monkeypatch, tmp_path):
                         lambda *a, **kw: (None, 'blocked in tests'))
     monkeypatch.setattr(proc, 'run', lambda *a, **kw: None)
     monkeypatch.setattr(gui_api, 'start_job', lambda *a, **kw: 'stub-job')
+    # "Open Archeus V1" asks a running Core for a launch code and opens a
+    # browser: never the machine's own Core, never its browser
+    import webbrowser
+    monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path / 'archeus-home'))
+    monkeypatch.setattr(webbrowser, 'open', lambda *a, **kw: True)
     # An OSError, not a test failure: some routes legitimately shell out to the
     # claude CLI, every one of them already handles it being absent, and
     # raising something the handler cannot catch just kills the connection and

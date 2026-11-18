@@ -566,6 +566,8 @@ def test_an_unreachable_provider_fails_the_call_instead_of_billing_anthropic(mon
 def _launch(monkeypatch, sb, choice, opts=None, provider=''):
     from claude_sessions import main as main_mod
     monkeypatch.setattr(main_mod, 'get_claude_exe', lambda: r'C:\fake\claude.exe')
+    from claude_sessions import launch as _launch_mod   # where the argv is built (P12)
+    monkeypatch.setattr(_launch_mod, 'get_claude_exe', lambda: r'C:\fake\claude.exe')
     folder = sb.projects / 'X--work-proj'
     folder.mkdir(exist_ok=True)
     o = {'effort': '', 'model': '', 'perm': '', 'name': '', 'worktree': '',
