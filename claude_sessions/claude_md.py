@@ -8,6 +8,8 @@ import subprocess
 import shutil
 from itertools import islice
 
+from archeus.core.redact import redact
+
 from .config import (W, _AUTOGEN_START, _AUTOGEN_END, _SESSIONS_START, _SESSIONS_END,
                      _AI_MARKER, _MEMORY_START, _MEMORY_END,
                      _AGENTS_START, _AGENTS_END, _LOOP_START, _LOOP_END)
@@ -35,6 +37,54 @@ _MACHINE_BLOCKS = ((_MEMORY_START, _MEMORY_END),
 _AI_ANALYZE_TIMEOUT = 900
 
 
+_FENCE_OPEN = re.compile(r'[ \t]*(`{3,}(?=[^`]*$)|~{3,})')
+
+
+def _markers(text, start, end):
+    """(begin, stop, is_start) of each marker that stands alone on its line and is
+    outside a fenced code block. A marker quoted in a sentence, or documented in an
+    example fence, is prose and never a block. A fence that never closes hides
+    nothing: a forgotten closing line above a real block must not make every
+    refresh append another copy of it."""
+    out, held, fence, pos = [], [], None, 0
+    for n, line in enumerate(text.split('\n')):
+        bom = 1 if n == 0 and line.startswith(chr(0xFEFF)) else 0
+        line = line[bom:]
+        t = line.strip()
+        m = _FENCE_OPEN.match(line)
+        if fence is None:
+            if m:
+                fence = m.group(1)
+            elif t in (start, end):
+                out.append((pos + bom, pos + bom + len(line), t == start))
+        elif t and set(t) == {fence[0]} and len(t) >= len(fence):
+            fence, held = None, []
+        elif t in (start, end):
+            held.append((pos + bom, pos + bom + len(line), t == start))
+        pos += len(line) + bom + 1
+    return out + held
+
+
+def block_span(text, start, end):
+    """(begin, stop) of the first well-formed block: a START whose next marker is
+    its END. A START followed by another START, or an END with no open START, is
+    stray text and never a block. None when there is no such block."""
+    open_at = None
+    for begin, stop, is_start in _markers(text, start, end):
+        if is_start:
+            open_at = begin
+        elif open_at is not None:
+            return open_at, stop
+    return None
+
+
+def well_formed(text, start, end):
+    """True when the markers in `text` are exactly START, END, START, END, ... with
+    nothing stray: the only state in which rewriting them is safe."""
+    kinds = [is_start for _, _, is_start in _markers(text, start, end)]
+    return len(kinds) % 2 == 0 and all(k == (i % 2 == 0) for i, k in enumerate(kinds))
+
+
 def upsert_block(project_path, start, end, section, filename='CLAUDE.md'):
     """Insert, replace or REMOVE one sentinel block in <project>/<filename>,
     leaving everything else (user prose, AUTOGEN, SESSIONS, other blocks)
@@ -50,25 +100,22 @@ def upsert_block(project_path, start, end, section, filename='CLAUDE.md'):
     old = ''
     if os.path.exists(md_path):
         try:
-            old = open(md_path, encoding='utf-8', errors='ignore').read()
+            old = open(md_path, encoding='utf-8', newline='').read()
         except Exception:
-            old = ''
-    if start in old and end in old:
-        pre = old[:old.index(start)]
-        post = old[old.index(end) + len(end):]
-        # Normalise the seam instead of concatenating it. `section` already ends
-        # in a newline and `post` began with the one that followed the old
-        # sentinel, so a plain join added a blank line on EVERY rewrite — a slow
-        # leak that only showed once auto-memory started running unattended on a
-        # timer, by which point the file had grown dozens of trailing blanks.
-        # This makes the write idempotent: same digest in, same bytes out.
-        tail = post.lstrip('\n')
-        new = (pre.rstrip('\n') + ('\n\n' + tail if tail else '\n')) if not section \
-            else pre + section + ('\n' + tail if tail else '')
+            return False, '', ''   # its text is unknown: not ours to replace
+    span = block_span(old, start, end)
+    if span:
+        # The bytes around the block are spliced untouched, and the newline that
+        # closed the old END line is kept as it was, so a CRLF file or a missing
+        # final newline stays so. Same digest in, same bytes out.
+        head, rest = _cut(old, span)
+        cr = span[1] - 1 if old[span[1] - 1:span[1]] == '\r' else span[1]
+        closing = old[cr:_owned_stop(old, span)]
+        new = head + (section.rstrip('\r\n') + closing if section else '') + rest
     elif not section:
         return True, old, old               # nothing to remove
-    elif old.strip():
-        new = old.rstrip('\n') + '\n\n' + section
+    elif old:
+        new = old +('\n' if old.endswith('\n') else '\n\n') + section
     else:
         name = os.path.basename(project_path) or project_path
         new = f"# {name}\n\n{section}"
@@ -102,7 +149,7 @@ def write_memory_block(project_path, digest):
                              "the project's Memory tab -> Build with Claude")
     section = (f"{_MEMORY_START}\n## Project memory (archeus — auto-maintained)\n"
                f"{note}\n\n"
-               f"{digest}\n{_MEMORY_END}\n")
+               f"{redact(digest)}\n{_MEMORY_END}\n")
     first, ok = None, True
     for name in _harnesses.instructions_files():
         got = upsert_block(project_path, _MEMORY_START, _MEMORY_END, section,
@@ -124,20 +171,45 @@ def _valid_claude_md(text):
     return len(re.findall(r'^#{1,3} ', text, re.M)) >= 2
 
 
-def _preserve_block(final, existing, start=_MEMORY_START, end=_MEMORY_END):
+def _preserve_block(final, existing, start=_MEMORY_START, end=_MEMORY_END,
+                    from_user=False):
     """Carry a sentinel block from `existing` into `final` verbatim. AI analyze
     rewrites the whole CLAUDE.md and would otherwise drop the machine-maintained
     ARCHEUS:MEMORY block (it lives after AUTOGEN/SESSIONS, so Claude never
-    sees it). Always keep it."""
-    if start not in existing or end not in existing:
+    sees it). Always keep it. `from_user` marks `final` as the user's own prose,
+    whose stray markers are kept as prose."""
+    span = block_span(existing, start, end)
+    if span is None:
         return final
-    block = existing[existing.index(start):existing.index(end) + len(end)]
-    if start in final and end in final:  # drop any stray block the model emitted
-        final = final[:final.index(start)] + final[final.index(end) + len(end):]
-    return final.rstrip('\n') + '\n\n' + block.rstrip('\n') + '\n'
+    block = existing[span[0]:_owned_stop(existing, span)]
+    final = _drop_blocks(final, start, end, strays=not from_user)
+    return final.rstrip('\n') + '\n\n' + block
 
 
-def _preserve_machine_blocks(final, existing):
+_STRAY_STOP = re.compile(r'\n\n|\n(?=<!--)')
+
+
+def _drop_blocks(text, start, end, strays=True):
+    """`text` without its archeus blocks. With `strays`, a START that never reaches
+    its END is model output echoing a sentinel: it goes with the paragraph under
+    it, which ends at the next blank line or the next `<!--` marker, so the AUTOGEN
+    and SESSIONS blocks that follow it are not swallowed. User prose keeps it."""
+    span = block_span(text, start, end)
+    while span:
+        text = text[:span[0]] + text[span[1]:]
+        span = block_span(text, start, end)
+    if not strays:
+        return text
+    stray = [b for b, _, is_start in _markers(text, start, end) if is_start]
+    while stray:
+        i = text.index(start, stray[0])
+        m = _STRAY_STOP.search(text, i + len(start))
+        text = text[:i] + (text[m.end():] if m else '')
+        stray = [b for b, _, is_start in _markers(text, start, end) if is_start]
+    return text
+
+
+def _preserve_machine_blocks(final, existing, from_user=False):
     """Carry EVERY block archeus maintains across a rewrite.
 
     Only MEMORY was carried, because only MEMORY was known here. The subagent
@@ -149,7 +221,7 @@ def _preserve_machine_blocks(final, existing):
     instead, which is why the two changes are one change.
     """
     for start, end in _MACHINE_BLOCKS:
-        final = _preserve_block(final, existing, start, end)
+        final = _preserve_block(final, existing, start, end, from_user)
     return final
 
 
@@ -246,9 +318,10 @@ def find_git_repos(root, max_depth=2):
 def _parse_existing_sessions(text):
     """Extract session entries from SESSIONS block. Returns dict {sid_prefix: line}."""
     entries = {}
-    if _SESSIONS_START not in text or _SESSIONS_END not in text:
+    span = block_span(text, _SESSIONS_START, _SESSIONS_END)
+    if span is None:
         return entries
-    block = text[text.index(_SESSIONS_START) + len(_SESSIONS_START):text.index(_SESSIONS_END)]
+    block = text[span[0] + len(_SESSIONS_START):span[1] - len(_SESSIONS_END)]
     for line in block.splitlines():
         line = line.strip()
         if line.startswith('- '):
@@ -423,19 +496,40 @@ def replace_machine_blocks(existing, new_autogen, new_sessions):
     """Swap the AUTOGEN + SESSIONS sentinel blocks inside `existing`, appending
     any that are missing. `new_autogen`/`new_sessions` are full blocks INCLUDING
     sentinels ('' skips sessions). Returns the new full text."""
-    if _AUTOGEN_START in existing and _AUTOGEN_END in existing:
-        pre  = existing[:existing.index(_AUTOGEN_START)]
-        post = existing[existing.index(_AUTOGEN_END) + len(_AUTOGEN_END):]
-    else:
-        pre  = existing.rstrip('\n') + '\n\n'
-        post = ''
-    if _SESSIONS_START in post and _SESSIONS_END in post:
-        post = (post[:post.index(_SESSIONS_START)]
-                + (new_sessions or '')
-                + post[post.index(_SESSIONS_END) + len(_SESSIONS_END):])
-    elif new_sessions:
-        post = (post.rstrip('\n') + '\n\n' + new_sessions) if post.strip() else new_sessions
-    return pre + new_autogen + post
+    text = _swap_block(existing, _AUTOGEN_START, _AUTOGEN_END, new_autogen)
+    return _swap_block(text, _SESSIONS_START, _SESSIONS_END, new_sessions or '')
+
+
+def _owned_stop(text, span):
+    """End of the block's owned bytes: its END line and the newline that closed
+    it, when present. A CRLF line's carriage return is already inside `span`."""
+    return span[1] + 1 if text[span[1]:span[1] + 1] == '\n' else span[1]
+
+
+def _cut(text, span):
+    """(text before the block, text after it) without the block. The newline that
+    closed the block goes with it: the block rewrites its own newline, so keeping
+    it here added a blank line on every prune."""
+    stop = _owned_stop(text, span)
+    return text[:span[0]], text[stop:]
+
+
+def _swap_block(text, start, end, block):
+    """Put `block` where the first well-formed start..end block is, and drop every
+    later well-formed one; '' removes them. With no block to replace it is
+    appended. Stray markers are left as prose: only archeus's own blocks go."""
+    span = block_span(text, start, end)
+    if span is None:
+        if not block:
+            return text
+        return (text + ('\n' if text.endswith('\n') else '\n\n') + block) \
+            if text else block
+    head, rest = _cut(text, span)
+    span = block_span(rest, start, end)
+    while span:
+        rest = ''.join(_cut(rest, span))
+        span = block_span(rest, start, end)
+    return head + block + rest
 
 
 def prune_preview(project_path, proj_folder=None):
@@ -450,7 +544,7 @@ def prune_preview(project_path, proj_folder=None):
     if not os.path.isfile(md_path):
         return None
     try:
-        existing = open(md_path, 'r', encoding='utf-8', errors='ignore').read()
+        existing = open(md_path, 'r', encoding='utf-8', newline='').read()
     except Exception:
         return None
     before = _parse_existing_sessions(existing)
@@ -504,7 +598,16 @@ def prune_claude_md(project_path, proj_folder=None):
 
 _KEEP_RE = re.compile(re.escape(_cfg._KEEP_START) + r'.*?' + re.escape(_cfg._KEEP_END),
                       re.S)
-_KEEP_MARK = '@@ARCHEUS_KEEP_%d@@'
+_KEEP_STEM = '@@ARCHEUS_KEEP_'
+
+
+def _keep_stem(manual):
+    """A placeholder prefix that the user's own text does not contain, so a marker
+    can only be one archeus wrote. Grows until absent: the manual is finite."""
+    stem = _KEEP_STEM
+    while stem in (manual or ''):
+        stem += 'X'
+    return stem
 
 
 def _fence_out(manual):
@@ -512,26 +615,29 @@ def _fence_out(manual):
 
     Returns (text_with_markers, [region_text]). The regions never reach the
     model, so no amount of creative rewriting can touch them."""
+    stem = _keep_stem(manual)
     kept = []
 
     def _sub(m):
         kept.append(m.group(0))
-        return _KEEP_MARK % (len(kept) - 1)
+        return f'{stem}{len(kept) - 1}@@'
 
     return _KEEP_RE.sub(_sub, manual or ''), kept
 
 
-def _fence_in(text, kept):
+def _fence_in(text, kept, stem=None):
     """Put the fenced regions back where their markers are.
 
-    A marker the model dropped does NOT lose the region — it is re-appended at
-    the end instead. Content survives even when placement does not, because
+    `stem` is the one `_keep_stem` chose for this manual; without it no marker can
+    be told apart from the user's own text, so every region is re-appended. A
+    marker the model dropped does NOT lose the region either — it is re-appended
+    at the end instead. Content survives even when placement does not, because
     "you will not lose this" is the only promise the fence makes."""
     out = text or ''
     for i, region in enumerate(kept):
-        mark = _KEEP_MARK % i
-        if mark in out:
-            out = out.replace(mark, region)
+        mark = f'{stem}{i}@@' if stem else None
+        if mark and mark in out:
+            out = out.replace(mark, region, 1)
         else:
             out = out.rstrip('\n') + '\n\n' + region + '\n'
     return out
@@ -547,7 +653,8 @@ def _valid_compressed(text):
         r"(?i)^\W*(i'll|i will|i've|here(?: is|'s)|sure|okay|certainly|edit pending)", t)
 
 
-def assemble_with_manual(manual, existing, project_path, proj_folder=None):
+def assemble_with_manual(manual, existing, project_path, proj_folder=None,
+                         from_user=False):
     """Put `manual` back into a CLAUDE.md, rebuilding what archeus owns.
 
     The manual half is the only thing a caller may replace. AUTOGEN and SESSIONS
@@ -561,7 +668,7 @@ def assemble_with_manual(manual, existing, project_path, proj_folder=None):
                     if sessions_content else '')
     final = replace_machine_blocks((manual or '').rstrip('\n') + '\n',
                                    new_autogen, new_sessions)
-    final = _preserve_machine_blocks(final, existing)
+    final = _preserve_machine_blocks(final, existing, from_user)
     if _AI_MARKER in existing and _AI_MARKER not in final:
         lines = final.split('\n')
         insert_at = 1
@@ -606,12 +713,13 @@ def set_manual_prose(project_path, proj_folder=None, text=''):
     moving them is a legitimate edit. Returns (ok, error)."""
     md_path = os.path.join(project_path, 'CLAUDE.md')
     try:
-        existing = open(md_path, encoding='utf-8', errors='ignore').read()
+        existing = open(md_path, encoding='utf-8', newline='').read()
     except Exception:
         existing = ''
     if not existing.strip():
         return False, 'no CLAUDE.md yet — scaffold one first'
-    final = assemble_with_manual(text, existing, project_path, proj_folder)
+    final = assemble_with_manual(text, existing, project_path, proj_folder,
+                                 from_user=True)
     if final == existing:
         return True, ''
     if not write_claude_md(md_path, existing, final, project_path, proj_folder,
@@ -632,7 +740,7 @@ def ai_compress_claude_md(project_path, proj_folder=None):
     md_path = os.path.join(project_path, 'CLAUDE.md')
     name = os.path.basename(project_path) or project_path
     try:
-        existing = open(md_path, encoding='utf-8', errors='ignore').read()
+        existing = open(md_path, encoding='utf-8', newline='').read()
     except Exception:
         existing = ''
     if not existing.strip():
@@ -641,6 +749,7 @@ def ai_compress_claude_md(project_path, proj_folder=None):
 
     from .ctxaudit import split_blocks
     manual = split_blocks(existing)['manual']
+    stem = _keep_stem(manual)
     manual, kept = _fence_out(manual)
     prompt = (
         "Compress this CLAUDE.md project-instructions file. It is loaded into the "
@@ -667,7 +776,7 @@ def ai_compress_claude_md(project_path, proj_folder=None):
         flash("Compression failed (empty/invalid output) — CLAUDE.md untouched",
               ok=False, secs=2)
         return False
-    compressed = _fence_in(compressed, kept)
+    compressed = _fence_in(compressed, kept, stem)
 
     final = assemble_with_manual(compressed, existing, project_path, proj_folder)
 
@@ -796,9 +905,11 @@ def _pager_confirm(title, content):
     Returns True=approve, False=reject."""
     from .ui import flush_input, wait_event, poll_event
     from . import render
+    from .skillscan import _inert
 
     flush_input()   # discard keys buffered during generation
-    lines = content.splitlines()
+    # what is reviewed here came from a model: shown inert, written as it is
+    lines = [_inert(ln.expandtabs(4)) for ln in content.splitlines()]
     top = 0
     pending = None
     while True:
@@ -896,7 +1007,7 @@ def ai_scaffold_claude_md(project_path, proj_folder=None):
     existing_ai_sections = ''
     if os.path.exists(md_path):
         try:
-            existing_for_sessions = open(md_path, 'r', encoding='utf-8', errors='ignore').read()
+            existing_for_sessions = open(md_path, 'r', encoding='utf-8', newline='').read()
             if existing_for_sessions.strip():
                 is_update = True
                 # Extract content before AUTOGEN block to pass to Claude for updating
@@ -907,8 +1018,10 @@ def ai_scaffold_claude_md(project_path, proj_folder=None):
                                         .replace(_AI_MARKER + '\n', '')
                                         .replace(_AI_MARKER, '')
                                         .strip())
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"\n  Cannot read CLAUDE.md: {e}\n  Left untouched.")
+            time.sleep(2)
+            return
 
     # ── Confirmation screen + optional extra prompt ──────────────
     # Skipped entirely on a job thread. `wait_event()` is a `time.sleep(0.03)`
@@ -1265,15 +1378,12 @@ def ai_scaffold_claude_md(project_path, proj_folder=None):
         lines.insert(insert_at, _AI_MARKER)
     final = '\n'.join(lines)
 
-    try:
-        with open(md_path, 'w', encoding='utf-8') as f:
-            f.write(final)
-        print(f"  Done — CLAUDE.md {'updated' if is_update else 'written'}.")
-        time.sleep(1)
-    except Exception as e:
-        print(f"\n  Write error: {e}")
+    if not _c.write_atomic(md_path, final):
+        print("\n  Write error: CLAUDE.md untouched.")
         time.sleep(2)
         return
+    print(f"  Done — CLAUDE.md {'updated' if is_update else 'written'}.")
+    time.sleep(1)
 
     try:
         from . import workspace
@@ -1296,9 +1406,9 @@ def scaffold_claude_md(project_path, proj_folder=None):
     existing = ''
     if os.path.exists(md_path):
         try:
-            existing = open(md_path, 'r', encoding='utf-8', errors='ignore').read()
+            existing = open(md_path, 'r', encoding='utf-8', newline='').read()
         except Exception:
-            pass
+            return False   # its text is unknown: not ours to replace
 
     # Build fresh repos/commits/READMEs block
     autogen_content = _build_autogen_block(project_path, proj_folder)
@@ -1324,7 +1434,7 @@ def scaffold_claude_md(project_path, proj_folder=None):
                  + ('\n' + new_sessions if new_sessions else ''))
 
     if not _c.write_atomic(md_path, final):
-        return
+        return False
     try:
         from . import workspace
         workspace.update_manifest(project_path, proj_folder, 'scaffold')
@@ -1336,5 +1446,6 @@ def scaffold_claude_md(project_path, proj_folder=None):
     except Exception:
         pass
     open_in_editor(md_path)
+    return True
 
 

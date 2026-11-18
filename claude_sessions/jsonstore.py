@@ -66,7 +66,12 @@ def _copy(default):
 
 
 def _quarantine(path):
-    dest = '%s.corrupt-%d' % (path, int(time.time()))
+    stamp = int(time.time())
+    dest = '%s.corrupt-%d' % (path, stamp)
+    n = 1
+    while os.path.exists(dest):
+        dest = '%s.corrupt-%d-%d' % (path, stamp, n)
+        n += 1
     try:
         os.replace(path, dest)
     except OSError:

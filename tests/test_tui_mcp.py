@@ -118,7 +118,7 @@ def _fake_claude(monkeypatch, stdout, stderr=''):
         pass
     r = R()
     r.stdout, r.stderr, r.returncode = stdout, stderr, 0
-    monkeypatch.setattr(mcp_mod, 'get_claude_exe', lambda: 'claude.exe')
+    monkeypatch.setattr(mcp_mod, 'get_claude_exe', lambda: os.path.abspath('claude.exe'))
     monkeypatch.setattr(subprocess, 'run', lambda *a, **k: r)
 
 

@@ -1,0 +1,521 @@
+import threading
+from types import SimpleNamespace
+
+import pytest
+
+from archeus.node import mxc, mxc_native as native
+
+
+class FakeWin32:
+    def __init__(self, failure=None):
+        self.handles = {}
+        self.failure = failure
+        self.events = []
+        self.reads = {1: [b'out', b''], 2: [b'err', b'']}
+        self.now = 0
+        self.exit = 17
+        self.stalled = False
+
+    def point(self, name):
+        self.events.append(name)
+        if self.failure == name:
+            raise OSError(name)
+
+    def allocate(self, name):
+        self.point(name)
+        handle = len(self.events) + 100
+        self.handles[handle] = name
+        return handle
+
+    def protected_policy(self, data):
+        return 'C:\\protected\\policy.json', self.allocate('policy')
+
+    def remove_policy(self, path, handle):
+        self.close_handle(handle)
+
+    def pipe(self, *, parent_reads):
+        number = sum(name.startswith('parent') for name in self.handles.values())
+        parent = self.allocate('parent%d' % number)
+        try:
+            return parent, self.allocate('child%d' % number)
+        except BaseException:
+            self.close_handle(parent)
+            raise
+
+    def attribute_list(self, handles):
+        self.allowlist = handles
+        return self.allocate('attributes')
+
+    def delete_attribute_list(self, handle):
+        self.close_handle(handle)
+
+    def create_process_w(self, **kwargs):
+        self.kwargs = kwargs
+        self.point('create')
+        process = self.allocate('process')
+        try:
+            return process, self.allocate('thread'), 123
+        except BaseException:
+            self.close_handle(process)
+            raise
+
+    def creation_time(self, process):
+        self.point('time')
+        return 456
+
+    def assign_job(self, job, process):
+        assert job == 'core-job'
+        self.point('assign')
+
+    def in_job(self, job, process):
+        self.point('query')
+        return self.failure != 'membership'
+
+    def resume_thread(self, thread):
+        self.point('resume')
+        return 1
+
+    def terminate_process(self, process):
+        self.events.append('kill')
+
+    def close_handle(self, handle):
+        del self.handles[handle]
+
+    def poll(self, process):
+        return self.exit
+
+    def read(self, handle, size):
+        index = int(self.handles[handle][-1])
+        queue = self.reads[index]
+        return queue.pop(0) if queue else None
+
+    def write(self, handle, data):
+        return 0 if self.stalled else len(data)
+
+    def pause(self, seconds):
+        self.now += seconds
+
+
+def setup(api):
+    transport = native.Transport(api, api, clock=lambda: api.now, pause=api.pause,
+                                 output_limit=8)
+    policy = SimpleNamespace(raw={'process': {'cwd': 'C:\\work', 'timeout': 10}})
+    path = transport.stage_policy(policy.raw)
+    return transport, policy, path
+
+
+def create(api):
+    transport, policy, path = setup(api)
+    child = transport.create_suspended(['C:\\space ü\\launcher.exe', '--debug', path],
+                                       policy=policy)
+    return transport, child
+
+
+@pytest.mark.parametrize('failure', ['policy', 'parent0', 'child0', 'parent1', 'child1',
+                                    'parent2', 'child2', 'attributes', 'create',
+                                    'process', 'thread', 'time'])
+def test_allocation_fault_closes_every_handle(failure):
+    api = FakeWin32(failure)
+    with pytest.raises(OSError):
+        create(api)
+    assert api.handles == {}
+    if failure == 'time':
+        assert 'kill' in api.events
+
+
+def test_suspended_allowlist_and_resume_once():
+    api = FakeWin32()
+    transport, child = create(api)
+    assert api.kwargs['flags'] & native.CREATE_SUSPENDED
+    assert api.kwargs['application'] == 'C:\\space ü\\launcher.exe'
+    assert api.kwargs['command_line'].startswith('"C:\\space ü\\launcher.exe" --debug ')
+    assert api.kwargs['std_handles'] == api.allowlist
+    assert len(api.allowlist) == 3 and 'core-job' not in api.allowlist
+    assert child.create_time == 456
+    transport.assign_job('core-job', child)
+    assert transport.in_job('core-job', child)
+    assert transport.resume(child) == 1
+    with pytest.raises(mxc.MxcUnavailable, match='already resumed'):
+        transport.resume(child)
+    assert api.events.count('resume') == 1
+    child.terminate()
+    child.terminate()
+    assert api.events.count('kill') == 1
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize('failure', ['assign', 'query', 'membership', 'resume'])
+def test_job_fault_kills_and_closes(failure, monkeypatch):
+    api = FakeWin32(failure)
+    transport, policy, _ = setup(api)
+    # setup's staged lease is unused: NativeMxc stages its own policy.
+    for path, handle in list(transport._policies.items()):
+        api.remove_policy(path, handle)
+    transport._policies.clear()
+    monkeypatch.setattr(mxc, 'NATIVE_RUN_ENABLED', True)
+    monkeypatch.setattr(mxc, 'validate_policy', lambda policy: None)
+    monkeypatch.setattr(mxc, '_path', lambda path: path)
+    backend = mxc.NativeMxc(transport, lambda raw: True)
+    with pytest.raises((OSError, mxc.MxcUnavailable)):
+        backend.spawn(policy, exe='C:\\launcher.exe', job='core-job')
+    assert 'kill' in api.events
+    assert api.handles == {}
+
+def test_both_outputs_and_eof_keep_launcher_status():
+    api = FakeWin32()
+    _, child = create(api)
+    child.stdin.write(b'input')
+    assert child.wait() == 17
+    assert child.launcher_exit == 17
+    assert child.stdout.read() == b'out'
+    assert child.stderr.read() == b'err'
+    assert child.stdin.closed
+    assert api.handles == {}
+
+
+def test_output_bound():
+    api = FakeWin32()
+    api.reads[1] = [b'12345678', b'9']
+    _, child = create(api)
+    with pytest.raises(mxc.MxcUnavailable, match='bound'):
+        child.wait()
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize('kind', ['stdin', 'descendant', 'both-full', 'cancel'])
+def test_deadline_and_cancel_during_drain(kind):
+    api = FakeWin32()
+    api.exit = None
+    api.stalled = True
+    api.reads = {1: [], 2: []}
+    if kind == 'both-full':
+        api.reads = {1: [b'12345678', b'9'], 2: [b'12345678', b'9']}
+    if kind == 'descendant':
+        api.exit = 0
+    _, child = create(api)
+    child.stdin.write(b'stalled')
+    with pytest.raises((TimeoutError, mxc.MxcUnavailable)):
+        child.wait(cancelled=lambda: kind == 'cancel' and api.now > 0)
+    child.terminate()
+    assert api.handles == {}
+
+
+
+
+def test_caller_can_close_stdin_before_wait():
+    api = FakeWin32()
+    _, child = create(api)
+    child.stdin.write(b'input')
+    child.stdin.close()
+    assert child.wait() == 17
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize('application', ['launcher.exe', '\\launcher.exe', 'C:launcher.exe'])
+def test_relative_application_refused_and_policy_released(application):
+    api = FakeWin32()
+    transport, policy, path = setup(api)
+    with pytest.raises(mxc.MxcUnavailable, match='absolute'):
+        transport.create_suspended([application, '--debug', path], policy=policy)
+    assert api.handles == {}
+    assert 'create' not in api.events
+
+
+@pytest.mark.parametrize('count', [0, 2, 0xffffffff])
+def test_wrong_suspend_count_cannot_retry(count):
+    api = FakeWin32()
+    transport, child = create(api)
+    api.resume_thread = lambda thread: count
+    with pytest.raises(mxc.MxcUnavailable, match='suspend count'):
+        transport.resume(child)
+    with pytest.raises(mxc.MxcUnavailable, match='already resumed'):
+        transport.resume(child)
+    child.terminate()
+    assert api.handles == {}
+
+
+def test_full_outputs_are_serviced_in_same_turn():
+    api = FakeWin32()
+    api.reads = {1: [b'12345678', b''], 2: [b'abcdefgh', b'']}
+    reads = []
+    read = api.read
+
+    def check(handle, size):
+        reads.append((api.now, api.handles[handle]))
+        return read(handle, size)
+
+    api.read = check
+    _, child = create(api)
+    assert child.wait() == 17
+    assert reads[:2] == [(0, 'parent1'), (0, 'parent2')]
+    assert child.stdout.read() == b'12345678'
+    assert child.stderr.read() == b'abcdefgh'
+    assert api.handles == {}
+
+
+def test_native_backend_stays_disabled():
+    api = FakeWin32()
+    backend = native.Backend(api, api, lambda raw: True)
+    with pytest.raises(mxc.MxcUnavailable, match='disabled'):
+        backend.spawn(None, exe='C:\\launcher.exe', job='core-job')
+    assert api.handles == {}
+
+
+def test_quoted_argument_and_trailing_backslash():
+    api = FakeWin32()
+    transport, policy, path = setup(api)
+    child = transport.create_suspended(
+        ['C:\\launcher.exe', 'a"b', 'space \\', path], policy=policy)
+    assert api.kwargs['command_line'] == (
+        'C:\\launcher.exe a\\"b "space \\\\" C:\\protected\\policy.json')
+    child.terminate()
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize('failure', ['assign', 'query', 'membership', 'resume'])
+def test_start_fault_terminates_and_closes(failure):
+    api = FakeWin32(failure)
+    transport, policy, path = setup(api)
+    with pytest.raises((OSError, mxc.MxcUnavailable)):
+        transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
+    assert api.events.count('kill') == 1
+    assert api.handles == {}
+    if failure != 'resume':
+        assert 'resume' not in api.events
+
+
+def test_start_orders_assignment_membership_and_single_resume():
+    api = FakeWin32()
+    transport, policy, path = setup(api)
+    child = transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
+    try:
+        assert api.kwargs['flags'] & native.CREATE_SUSPENDED
+        assert api.events.index('create') < api.events.index('assign')
+        assert api.events.index('assign') < api.events.index('query')
+        assert api.events.index('query') < api.events.index('resume')
+        with pytest.raises(mxc.MxcUnavailable, match='already resumed'):
+            transport.resume(child)
+        with pytest.raises(KeyError):
+            transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
+        assert api.events.count('create') == api.events.count('resume') == 1
+    finally:
+        child.terminate()
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize('count', [0, 2, 0xffffffff])
+def test_start_wrong_suspend_count_terminates(count):
+    api = FakeWin32()
+    transport, policy, path = setup(api)
+    api.resume_thread = lambda thread: count
+    with pytest.raises(mxc.MxcUnavailable, match='suspend count'):
+        transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
+    assert api.events.count('kill') == 1
+    assert api.handles == {}
+
+
+# ── the ownership seam the ledger owes the resume (T-245) ──
+
+def test_the_ownership_seam_runs_between_membership_and_the_resume():
+    """The ledger's one permitted position: after membership is verified, before the
+    single resume, with the child still suspended and its identity readable."""
+    api = FakeWin32()
+    transport, policy, path = setup(api)
+    seen, hooked = [], []
+
+    def before_resume(child):
+        hooked.append(child)
+        seen.append((api.events.count('query'), 'resume' in api.events, child.resumed))
+        api.events.append('ownership')
+
+    child = transport.start('core-job', ['C:\\cmd.exe', path], policy=policy,
+                            before_resume=before_resume)
+    try:
+        assert [event for event in api.events
+                if event in ('create', 'assign', 'query', 'ownership', 'resume')] == [
+                    'create', 'assign', 'query', 'ownership', 'resume']
+        assert seen == [(1, False, False)]      # verified once, not resumed, still suspended
+        assert hooked == [child]                # and it is the same child Core gets back
+        assert api.events.count('resume') == 1
+        assert child.resumed is True
+    finally:
+        child.terminate()
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize('fault', [OSError('disk failed'),
+                                   mxc.MxcUnavailable('ledger refused'),
+                                   ValueError('bad ownership fact')])
+def test_an_ownership_seam_that_fails_never_resumes(fault):
+    """A ledger that cannot take the ownership facts stops the launch: the suspended
+    child is terminated, the thread is never resumed, no handle is left open."""
+    api = FakeWin32()
+    transport, policy, path = setup(api)
+
+    def before_resume(child):
+        raise fault
+
+    with pytest.raises(type(fault)):
+        transport.start('core-job', ['C:\\cmd.exe', path], policy=policy,
+                        before_resume=before_resume)
+    assert 'resume' not in api.events
+    assert api.events.count('kill') == 1
+    assert api.handles == {}
+
+
+def test_a_caller_with_no_seam_gets_the_same_order():
+    api = FakeWin32()
+    transport, policy, path = setup(api)
+    child = transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
+    try:
+        assert 'ownership' not in api.events
+        assert [event for event in api.events
+                if event in ('create', 'assign', 'query', 'resume')] == [
+                    'create', 'assign', 'query', 'resume']
+    finally:
+        child.terminate()
+    assert api.handles == {}
+
+
+def test_wait_after_close_refuses_without_touching_closed_handles():
+    api = FakeWin32()
+    _, child = create(api)
+    child.close()
+    with pytest.raises(mxc.MxcUnavailable, match='closed'):
+        child.wait()
+
+
+def test_one_handle_that_will_not_close_does_not_keep_the_others_open():
+    api = FakeWin32()
+    _, child = create(api)
+    first, real = child._handles[0], api.close_handle
+
+    def close_handle(handle):
+        if handle == first:
+            raise OSError('close_handle failed')
+        real(handle)
+
+    api.close_handle = close_handle
+    with pytest.raises(OSError, match='close_handle failed'):
+        child.close()
+    assert set(api.handles) == {first}          # the rest, the policy lease included, are closed
+    assert child._handles == [] and child._policy_lease is None
+    child.close()                               # nothing is retried
+
+
+def test_a_drain_released_after_its_launch_was_closed_touches_no_closed_handle():
+    """A cancel that gives up waiting for a stuck callback closes the handles under the
+    drain; when the callback returns, the drain must stop, not read, write or poll a number
+    that is closed and may name another object by now."""
+    seen = []
+
+    class Strict(FakeWin32):
+        def read(self, handle, size):
+            seen.append(('read', handle))
+            return super().read(handle, size)
+
+        def poll(self, process):
+            seen.append(('poll', process))
+            assert process in self.handles, 'poll on a closed handle'
+            return None
+
+        def write(self, handle, data):
+            assert handle in self.handles, 'write to a closed handle'
+            return len(data)
+
+    api = Strict()
+    transport, policy, path = setup(api)
+    child = transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
+    entered, release, outcome = threading.Event(), threading.Event(), []
+
+    def stuck(name, data):
+        entered.set()
+        release.wait(5)
+
+    child.attach(sink=stuck)
+
+    def drain():
+        try:
+            outcome.append(child.wait(5))
+        except BaseException as err:
+            outcome.append(err)
+
+    thread = threading.Thread(target=drain)
+    thread.start()
+    assert entered.wait(5)
+    child.close()
+    mark = len(seen)
+    release.set()
+    thread.join(5)
+    assert [type(x) for x in outcome] == [native.MxcUnavailable]
+    assert seen[mark:] == []
+
+
+def test_two_closers_release_the_policy_lease_once():
+    """The drain's failure path and a canceller close one launcher together: the lease
+    handle is released by exactly one of them, a closed number may name another object."""
+    api = FakeWin32()
+    _, child = create(api)
+    removed, inside, release = [], threading.Event(), threading.Event()
+    real = api.remove_policy
+
+    def slow(path, handle):
+        removed.append(handle)
+        inside.set()
+        release.wait(5)
+        real(path, handle)
+
+    api.remove_policy = slow
+    first = threading.Thread(target=child.close)
+    first.start()
+    assert inside.wait(5)
+    second = threading.Thread(target=child.close)
+    second.start()
+    second.join(5)                      # the second finds no lease left and returns
+    release.set()
+    first.join(5)
+    assert len(removed) == 1
+
+
+@pytest.mark.parametrize('call', ['terminate', 'is_alive'])
+def test_a_closer_cannot_close_the_launcher_handle_under_a_call_that_uses_it(call):
+    """terminate and is_alive checked the handle list and then called the kernel, outside
+    the lock: a canceller's close in between left TerminateProcess or the poll on a closed
+    number, which may name another process by then."""
+    api = FakeWin32()
+    _, child = create(api)
+    process, seen, closer = child.process_handle, [], []
+
+    def in_call(handle):
+        closer.append(threading.Thread(target=child.close))
+        closer[0].start()
+        closer[0].join(0.3)             # blocked on the lock, or it closes the handle here
+        seen.append(handle in api.handles)
+        return None
+
+    api.terminate_process = in_call
+    api.poll = in_call
+    getattr(child, call)()
+    closer[0].join(5)
+    assert seen == [True] and process not in api.handles
+
+
+def test_interrupt_during_spawn_still_kills_the_suspended_launcher(monkeypatch):
+    api = FakeWin32()
+    transport, policy, _ = setup(api)
+    for path, handle in list(transport._policies.items()):
+        api.remove_policy(path, handle)
+    transport._policies.clear()
+
+    def interrupted(job, process):
+        raise KeyboardInterrupt
+
+    api.assign_job = interrupted
+    monkeypatch.setattr(mxc, 'NATIVE_RUN_ENABLED', True)
+    monkeypatch.setattr(mxc, 'validate_policy', lambda policy: None)
+    monkeypatch.setattr(mxc, '_path', lambda path: path)
+    backend = mxc.NativeMxc(transport, lambda raw: True)
+    with pytest.raises(KeyboardInterrupt):
+        backend.spawn(policy, exe='C:\\launcher.exe', job='core-job')
+    assert 'kill' in api.events
+    assert api.handles == {}

@@ -349,11 +349,17 @@ def is_scheduled(loop_id):
         r = proc.run(['schtasks', '/query', '/tn', task_name(loop_id)], timeout=30)
         return bool(r is not None and r.returncode == 0)
     r = proc.run(['crontab', '-l'], timeout=15)
-    return bool(r and r.returncode == 0 and _cron_tag(loop_id) in (r.stdout or ''))
+    return bool(r and r.returncode == 0 and any(
+        _ours(ln, loop_id) for ln in (r.stdout or '').splitlines()))
 
 
 def _cron_tag(loop_id):
     return '# ' + task_name(loop_id)
+
+
+def _ours(line, loop_id):
+    # the tag ends the line; a substring test would take loop 12's line for loop 1
+    return line.rstrip().endswith(_cron_tag(loop_id))
 
 
 def _cron_write(loop_id, mins, argv):
@@ -365,8 +371,7 @@ def _cron_write(loop_id, mins, argv):
     r = proc.run(['crontab', '-l'], timeout=15)
     if r is None:
         return False, 'cron is not available on this machine'
-    lines = [ln for ln in (r.stdout or '').splitlines()
-             if _cron_tag(loop_id) not in ln]
+    lines = [ln for ln in (r.stdout or '').splitlines() if not _ours(ln, loop_id)]
     if argv is not None:
         spec = ('*/%d * * * *' % mins if mins < 60 else
                 ('0 */%d * * *' % (mins // 60) if mins < 1440 else

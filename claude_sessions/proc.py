@@ -11,11 +11,12 @@ import os
 import re as _re
 import subprocess
 import sys
+import threading
 import time
 
-__all__ = ['run', 'git', 'pid_alive', 'kill_tree', 'spawn_terminal',
+__all__ = ['run', 'run_capped', 'git', 'pid_alive', 'kill_tree', 'spawn_terminal',
            'spawn_detached', 'wait_and_run', 'python_exe', 'new_console_flags',
-           'no_window_flags', 'WINDOWS']
+           'no_window_flags', 'which', 'WINDOWS', 'process_create_time', 'kill_pid_tree']
 
 WINDOWS = os.name == 'nt'
 
@@ -36,10 +37,18 @@ no_window_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 #: upgrade worker: it starts here and does its work after we are gone.
 detached_flags = getattr(subprocess, 'DETACHED_PROCESS', 0) or no_window_flags
 
+#: A console of its own that nobody sees, in its own process group. For a child
+#: that starts console programs itself (a harness running its hooks, git, test
+#: commands): under DETACHED_PROCESS it has no console, so Windows opens a new,
+#: VISIBLE one for every such grandchild. A hidden console is inherited instead.
+#: The new group keeps a Ctrl+C in our console from reaching it, as detaching did.
+hidden_console_flags = no_window_flags | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+
 
 def run(args, *, cwd=None, env=None, timeout=30, stdin=None, check=False):
     """`subprocess.run` with the decoding pinned and the console suppressed.
-    Returns the CompletedProcess, or None if it could not be run at all.
+    Returns the CompletedProcess, or None if it could not be run at all, which
+    includes a bare program name that PATH does not hold outside *cwd*.
 
     `text=True` alone decodes with the locale codepage — cp1252 on Windows —
     so one non-ASCII path or branch name raises *inside* subprocess and the
@@ -53,6 +62,13 @@ def run(args, *, cwd=None, env=None, timeout=30, stdin=None, check=False):
     that decides to ask a question would otherwise block forever on a terminal
     nobody is watching — and inside a captured run there is no prompt to see.
     """
+    if args and not os.path.dirname(args[0]):
+        # a bare program name is never left to CreateProcess, which searches the
+        # current directory first; one PATH does not hold outside *cwd* is not run
+        exe = which(args[0], avoid=[cwd])
+        if exe is None:
+            return None
+        args = [exe, *args[1:]]
     try:
         r = subprocess.run(args, cwd=cwd, env=env, capture_output=True,
                            text=True, encoding='utf-8', errors='ignore',
@@ -73,6 +89,45 @@ def git(args, cwd, timeout=15):
         return None
     return r.stdout
 
+
+def run_capped(args, *, cwd=None, env=None, timeout=30, max_bytes):
+    """`run` for a child whose stdout may be large: at most *max_bytes* of it are
+    read, in chunks while the child runs. The CompletedProcess has `cut` True when
+    the child had more, and then the child was stopped (terminated, killed after
+    a short wait) and reaped, so it is never left writing into a pipe nobody reads.
+    stderr is discarded, not piped, for the same reason. It raises what Popen
+    raises when the child cannot start; a timeout kills the child and its return
+    code says so."""
+    p = subprocess.Popen(args, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                         creationflags=no_window_flags)
+    timer = threading.Timer(timeout, p.kill)
+    timer.start()
+    buf = b''
+    try:
+        # one byte past the cap says the child had more than the cap
+        while len(buf) <= max_bytes:
+            chunk = p.stdout.read1(max_bytes + 1 - len(buf))
+            if not chunk:
+                break
+            buf += chunk
+        cut = len(buf) > max_bytes
+        if cut:
+            p.terminate()
+            try:
+                p.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                p.kill()
+        p.wait()
+    finally:
+        timer.cancel()
+        if p.poll() is None:
+            p.kill()
+            p.wait()
+        p.stdout.close()
+    r = subprocess.CompletedProcess(args, p.returncode, buf[:max_bytes], b'')
+    r.cut = cut
+    return r
 
 #: schemes a remote may use. Deliberately an allowlist, not a denylist of the
 #: dangerous ones — git keeps adding transports.
@@ -128,7 +183,7 @@ def pid_alive(pid):
             return None                               # unknown → age decides
     try:
         os.kill(pid, 0)
-        return True
+        return not _zombie(pid)
     except ProcessLookupError:
         return False
     except PermissionError:
@@ -137,7 +192,169 @@ def pid_alive(pid):
         return None
 
 
-def spawn_detached(argv, *, cwd=None, env=None, log=None):
+def process_create_time(pid):
+    """When process *pid* was created, as an opaque comparable value, or None
+    when it does not exist or cannot be read.
+
+    A PID alone does not name a process: the OS reuses them, so a PID recorded
+    before a restart can belong to a stranger by the time it is used. The pair
+    (pid, create time) does. Only equality between two readings of the same
+    platform is meaningful — the value is not a timestamp to display.
+    """
+    try:
+        pid = int(pid)
+    except Exception:
+        return None
+    if pid <= 0:
+        return None
+    if WINDOWS:
+        try:
+            import ctypes
+            from ctypes import wintypes
+            k32 = ctypes.windll.kernel32
+            h = k32.OpenProcess(0x1000, False, pid)   # QUERY_LIMITED_INFORMATION
+            if not h:
+                return None
+            try:
+                code = ctypes.c_ulong()
+                if not k32.GetExitCodeProcess(h, ctypes.byref(code)) or code.value != 259:
+                    return None                        # exited: nothing to match
+                t = [wintypes.FILETIME() for _ in range(4)]
+                if not k32.GetProcessTimes(h, *[ctypes.byref(x) for x in t]):
+                    return None
+                return (t[0].dwHighDateTime << 32) | t[0].dwLowDateTime
+            finally:
+                k32.CloseHandle(h)
+        except Exception:
+            return None
+    if _zombie(pid):
+        return None                                   # exited: nothing to match
+    if sys.platform == 'darwin':
+        return _darwin_start_time(pid)
+    try:
+        with open('/proc/%d/stat' % pid, encoding='utf-8', errors='replace') as f:
+            # field 22 (starttime); split after the ')' that ends comm, which
+            # may itself contain spaces or parentheses
+            return int(f.read().rsplit(')', 1)[1].split()[19])
+    except Exception:
+        pass
+    try:                                              # other BSDs: no /proc
+        # `-p<pid>` attached: a bare '-p' element is what the headless-claude
+        # spawn gate (test_primitives) looks for, and this is not one
+        r = subprocess.run(['ps', '-o', 'lstart=', '-p%d' % pid],
+                           capture_output=True, text=True, timeout=5,
+                           creationflags=no_window_flags)
+        return r.stdout.strip() or None
+    except Exception:
+        return None
+
+
+def process_started_at(pid):
+    """Epoch seconds at which *pid* started, or None when it does not exist or the
+    platform's start time cannot be turned into one."""
+    ct = process_create_time(pid)
+    if not isinstance(ct, int):
+        return None
+    if WINDOWS:
+        return ct / 1e7 - 11644473600                 # 100 ns since 1601
+    if sys.platform == 'darwin':
+        return ct / 1e6
+    try:
+        with open('/proc/stat', encoding='utf-8') as f:
+            btime = next(int(line.split()[1]) for line in f if line.startswith('btime'))
+        return btime + ct / os.sysconf('SC_CLK_TCK')
+    except Exception:
+        return None
+
+
+_libproc = None
+
+
+def _darwin_start_time(pid):
+    """macOS: microseconds since the epoch at which *pid* started, from
+    libproc's PROC_PIDTBSDINFO, or None. `ps -o lstart` has whole-second
+    resolution, so two processes started in the same second — an orphan and
+    the stranger now holding its recycled pid — read the same there."""
+    global _libproc
+    try:
+        if _libproc is None:
+            import ctypes
+
+            class BsdInfo(ctypes.Structure):          # struct proc_bsdinfo, <sys/proc_info.h>
+                _fields_ = [('ids', ctypes.c_uint32 * 12),       # pbi_flags … rfu_1
+                            ('comm', ctypes.c_char * 16), ('name', ctypes.c_char * 32),
+                            ('counts', ctypes.c_uint32 * 5),     # pbi_nfiles … e_tpgid
+                            ('nice', ctypes.c_int32),
+                            ('start_tvsec', ctypes.c_uint64), ('start_tvusec', ctypes.c_uint64)]
+            lib = ctypes.CDLL('/usr/lib/libproc.dylib')
+            lib.proc_pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64,
+                                         ctypes.POINTER(BsdInfo), ctypes.c_int]
+            lib.proc_pidinfo.restype = ctypes.c_int
+            _libproc = (lib, BsdInfo, ctypes)
+        lib, BsdInfo, ctypes = _libproc
+        info = BsdInfo()
+        size = ctypes.sizeof(info)
+        if lib.proc_pidinfo(pid, 3, 0, ctypes.byref(info), size) != size:   # 3 = PROC_PIDTBSDINFO
+            return None                               # gone, or not ours to read
+        return info.start_tvsec * 1000000 + info.start_tvusec
+    except Exception:
+        return None
+
+
+def _zombie(pid):
+    """POSIX: exited, but not yet reaped by its parent. It still answers
+    `kill(pid, 0)` and keeps its start time, like the exited process an open
+    Windows handle keeps — which the Windows branches above already treat as
+    gone. Its pid cannot be reused until it is reaped."""
+    try:
+        with open('/proc/%d/stat' % pid, encoding='utf-8', errors='replace') as f:
+            return f.read().rsplit(')', 1)[1].split()[0] == 'Z'
+    except OSError:
+        pass
+    try:                                              # macOS / BSD: no /proc
+        r = subprocess.run(['ps', '-o', 'stat=', '-p%d' % pid],
+                           capture_output=True, text=True, timeout=5,
+                           creationflags=no_window_flags)
+        return r.stdout.strip().startswith('Z')
+    except Exception:
+        return False
+
+
+def kill_pid_tree(pid, create_time):
+    """Kill process *pid* and everything it spawned — only if it is still the
+    process that was created at *create_time*. Returns True when a kill was
+    issued, False when it was refused (unknown/None create time, no such
+    process, or a PID that now belongs to a different process).
+
+    The counterpart of `kill_tree` for a process this interpreter did not
+    start, or started before a restart: there is no Popen to ask, only a
+    recorded (pid, create time) pair.
+    """
+    # ponytail: the check and the kill are two steps, so a PID recycled in the
+    # microseconds between them is not caught; closing that needs a handle-based
+    # kill of the whole tree (Job Objects on Windows).
+    if create_time is None:
+        return False
+    current = process_create_time(pid)
+    if current is None or current != create_time:
+        return False
+    pid = int(pid)
+    try:
+        if WINDOWS:
+            r = subprocess.run(['taskkill', '/F', '/T', '/PID', str(pid)],
+                               capture_output=True, creationflags=no_window_flags)
+            return r.returncode == 0
+        if os.getpgid(pid) == pid:
+            # it leads its own group (spawn_detached's start_new_session)
+            os.killpg(pid, 15)
+        else:
+            os.kill(pid, 15)
+        return True
+    except Exception:
+        return False
+
+
+def spawn_detached(argv, *, cwd=None, env=None, log=None, stdin_path=None, hidden_console=False):
     """Start *argv* with no console and no tie to this process.
 
     Returns (Popen|None, error) — the same shape as spawn_terminal, because
@@ -150,7 +367,16 @@ def spawn_detached(argv, *, cwd=None, env=None, log=None):
     *log* is a file to append the output to, since a detached child has
     nowhere else to put it and its failure is the only record of why an
     upgrade did not happen.
+
+    *stdin_path* is a file the child reads as its stdin (a headless `claude -p`
+    takes its prompt there). Default: no stdin, as before.
     """
+    source = subprocess.DEVNULL
+    if stdin_path:
+        try:
+            source = open(stdin_path, 'rb')
+        except Exception as e:
+            return None, str(e)
     sink = subprocess.DEVNULL
     if log:
         try:
@@ -158,10 +384,11 @@ def spawn_detached(argv, *, cwd=None, env=None, log=None):
             sink = open(log, 'ab')
         except Exception:
             sink = subprocess.DEVNULL
-    kw = {'cwd': cwd, 'env': env, 'stdin': subprocess.DEVNULL,
+    kw ={'cwd': cwd, 'env': env, 'stdin': source,
           'stdout': sink, 'stderr': subprocess.STDOUT}
     if WINDOWS:
-        kw['creationflags'] = detached_flags
+        # *hidden_console*: see hidden_console_flags — for a child that spawns
+        kw['creationflags'] = hidden_console_flags if hidden_console else detached_flags
     else:
         kw['start_new_session'] = True
     try:
@@ -169,11 +396,12 @@ def spawn_detached(argv, *, cwd=None, env=None, log=None):
     except Exception as e:
         return None, str(e)
     finally:
-        if sink is not subprocess.DEVNULL:
-            try:
-                sink.close()          # the child holds its own handle now
-            except Exception:
-                pass
+        for f in (sink, source):
+            if f is not subprocess.DEVNULL:
+                try:
+                    f.close()         # the child holds its own handle now
+                except Exception:
+                    pass
 
 
 def python_exe():
@@ -378,6 +606,41 @@ _POSIX_TERMINALS = [
 ]
 
 
+def which(name, path=None, avoid=()):
+    """The first executable called *name* in *path* (default PATH), absolute, or None.
+
+    Not `shutil.which`: on Windows (before Python 3.12) it searches the current
+    directory first, so a core or GUI started inside an untrusted checkout would
+    run that checkout's `claude.exe` or `pi.cmd`. Here a relative entry, the
+    current directory and any directory inside one of *avoid* (a workspace) are
+    never searched, and a *name* with a directory part is never found. With the
+    default *path* the running interpreter's directory is searched last."""
+    if os.path.dirname(name):
+        return None
+    exts = ['']
+    if WINDOWS:
+        # an empty entry (a trailing ';') would match every name as already suffixed
+        pathext = ([e for e in os.environ.get('PATHEXT', '').lower().split(';') if e]
+                   or ['.com', '.exe', '.bat', '.cmd'])
+        exts = [''] if name.lower().endswith(tuple(pathext)) else pathext
+    norm = lambda d: os.path.normcase(os.path.abspath(d))
+    barred = [norm(d) for d in avoid if d]
+    cwd = norm(os.getcwd())
+    dirs = (os.environ.get('PATH', '') if path is None else path).split(os.pathsep)
+    if path is None:        # where CreateProcess also looks: the interpreter's own directory
+        dirs.append(os.path.dirname(sys.executable))
+    for d in filter(None, dirs):
+        a = norm(d)
+        if (not os.path.isabs(d) or a == cwd
+                or any(a == b or a.startswith(b.rstrip(os.sep) + os.sep) for b in barred)):
+            continue
+        for e in exts:
+            p = os.path.join(d, name + e)
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                return os.path.abspath(p)
+    return None
+
+
 def spawn_terminal(argv=None, *, cwd=None, env=None, title='', keep_open=False):
     """Open a NEW terminal window running *argv* (a plain shell when None).
 
@@ -386,22 +649,37 @@ def spawn_terminal(argv=None, *, cwd=None, env=None, title='', keep_open=False):
     closes on ANY exit code: ending a Claude session with Ctrl+C returns
     non-zero on Windows, and a `|| pause` left the window stuck on a keypress
     for every normal exit, not just crashes.
+
+    *title* names the window only where cmd opens it (a bare shell or *keep_open*
+    on Windows): a command started directly has no cmd to set one, and Popen
+    cannot set a console title.
     """
     if WINDOWS:
         return _spawn_windows(argv, cwd, env, title, keep_open)
     return _spawn_posix(argv, cwd, env, title, keep_open)
 
 
+#: cmd.exe does not honour list2cmdline's backslash-quote, so any of these in a
+#: word that reaches cmd's parser can end the quoting and start a second command.
+_CMD_META = _re.compile(r'[&|<>^%!"\x00-\x1f]')
+
+
 def _spawn_windows(argv, cwd, env, title, keep_open):
-    # argv-list form, never shell=True: list2cmdline quotes each argument, so a
-    # project or account name containing " & | cannot break out of the title
-    # and run something else.
+    # Text we did not write (a session title inside --append-system-prompt, a
+    # prompt, a branch) must never reach cmd.exe's parser: the program is
+    # started directly. cmd is used only for a bare shell or keep_open, and for a
+    # .cmd/.bat shim CreateProcess hands to cmd itself; there every word must be
+    # free of cmd metacharacters or the spawn is refused.
+    title = _CMD_META.sub(' ', title)
+    shim = bool(argv) and argv[0].lower().endswith(('.cmd', '.bat'))
+    if argv and (keep_open or shim) and any(_CMD_META.search(a) for a in argv):
+        return None, 'refused: an argument contains a cmd.exe metacharacter'
     if argv is None:
         cmd = ['cmd', '/k'] + (['title', title] if title else [])
     elif keep_open:
-        cmd = ['cmd', '/k'] + (['title', title, '&&'] if title else []) + list(argv)
+        cmd = ['cmd', '/k', 'title', title or 'archeus', '&&'] + list(argv)
     else:
-        cmd = ['cmd', '/c'] + (['title', title, '&&'] if title else []) + list(argv)
+        cmd = list(argv)
     try:
         return subprocess.Popen(cmd, cwd=cwd, env=env,
                                 creationflags=new_console_flags), ''

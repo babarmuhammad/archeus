@@ -54,9 +54,11 @@ def _ps_toast(title, message):
     installer to register one of its own.
     """
     from xml.sax.saxutils import escape
+    # no quote survives, so no line can start the '@ that ends the here-string
+    _QUOTE = {"'": '&apos;'}
     xml = ('<toast><visual><binding template="ToastText02">'
            '<text id="1">%s</text><text id="2">%s</text>'
-           '</binding></visual></toast>' % (escape(str(title)), escape(str(message))))
+           '</binding></visual></toast>' % (escape(str(title), _QUOTE), escape(str(message), _QUOTE)))
     script = (
         "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications,"
         " ContentType=WindowsRuntime] > $null;"

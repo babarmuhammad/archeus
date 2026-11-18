@@ -238,6 +238,8 @@ def _coerce(kind, choices, value):
             return True, False
         return False, 'expected true or false'
     if kind == 'int':
+        if isinstance(value, bool) or isinstance(value, float) and not value.is_integer():
+            return False, 'expected a whole number'
         try:
             return True, int(value)
         except (TypeError, ValueError):

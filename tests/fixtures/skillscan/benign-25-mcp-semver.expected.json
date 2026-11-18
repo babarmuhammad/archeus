@@ -1,0 +1,7 @@
+{
+  "fixture": "benign-25-mcp-semver.mcp.json",
+  "kind": "mcp",
+  "verdict": "benign",
+  "findings": [],
+  "note": "An exact registry SemVer prerelease and build is pinned."
+}

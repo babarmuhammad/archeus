@@ -15,10 +15,7 @@ def merged_system_prompt(sp_file, pointer, out_path):
     the whole system prompt and the appended pointer never reaches Claude."""
     base = ''
     if sp_file and os.path.isfile(sp_file):
-        try:
-            base = open(sp_file, encoding='utf-8', errors='ignore').read().strip()
-        except Exception:
-            pass
+        base = open(sp_file, encoding='utf-8', errors='ignore').read().strip()
     text = (base + '\n\n' if base else '') + pointer
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, 'w', encoding='utf-8') as f:

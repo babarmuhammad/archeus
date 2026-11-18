@@ -59,6 +59,8 @@ def project_state(project_path, cfgdir=None):
     being compared as strings.
     """
     projects = client_json(cfgdir).get('projects') or {}
+    if not isinstance(projects, dict):
+        return {}
     want = _norm(project_path)
     for k, v in projects.items():
         if _norm(k) == want and isinstance(v, dict):
@@ -133,7 +135,7 @@ def hook_activity(cfgdir=None, limit=ACTIVITY_SESSIONS, refresh=False):
     """
     cache = jsonstore.load(_activity_cache(cfgdir), expect=dict)
     if (not refresh and cache.get('at')
-            and time.time() - float(cache.get('at') or 0) < ACTIVITY_TTL):
+            and 0 <= time.time() - float(cache.get('at') or 0) < ACTIVITY_TTL):
         return {'sessions': cache.get('sessions', 0), 'hits': cache.get('hits', {})}
 
     from . import store

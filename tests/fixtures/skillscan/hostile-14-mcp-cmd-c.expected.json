@@ -1,0 +1,13 @@
+{
+  "fixture": "hostile-14-mcp-cmd-c.mcp.json",
+  "kind": "mcp",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "mcp-command-exec",
+      "line": 4,
+      "match": "\"cmd\""
+    }
+  ],
+  "note": "An MCP server whose command is the Windows wrapper cmd /c."
+}

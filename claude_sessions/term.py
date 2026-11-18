@@ -118,14 +118,14 @@ def _decode_escape():
     ch = final.decode('latin-1')
     if ch in _CSI:
         return _CSI[ch]
-    if ch.isdigit():                      # ESC [ <n> ~  — Del is 3
+    if ch.isdigit():                      # ESC [ <params> <final>  — Del is ESC [ 3 ~
         num = ch
         while True:
             more = _getch_timeout(0.03)
-            if not more or more == b'~':
+            if not more or 0x40 <= more[0] <= 0x7e:   # any final byte ends it, not only '~'
                 break
             num += more.decode('latin-1')
-        return ('del',) if num == '3' else None
+        return ('del',) if num == '3' and more == b'~' else None
     return None
 
 

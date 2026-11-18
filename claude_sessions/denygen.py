@@ -31,7 +31,7 @@ def scan_heavy(project_path, max_depth=2):
     """[(deny_pattern, why)] for heavy dirs / lock files actually present,
     scanning to `max_depth` levels below the project root (skips .git and
     doesn't descend into heavy dirs themselves)."""
-    root = os.path.abspath(project_path or '')
+    root = os.path.abspath(project_path) if project_path else ''
     if not root or not os.path.isdir(root):
         return []
     out = {}
@@ -71,20 +71,25 @@ def scan_heavy(project_path, max_depth=2):
 def merge_deny(project_path, patterns):
     """Merge deny patterns into <project>/.claude/settings.json →
     permissions.deny (create keys as needed, dedupe, preserve everything
-    else). Returns (added, already_present)."""
+    else). Returns (added, already_present), or None when the existing file
+    is not a JSON object or its permissions.deny is not a list: nothing is
+    written then, so the user's content is never replaced."""
     sp = os.path.join(os.path.abspath(project_path), '.claude', 'settings.json')
     data = {}
-    try:
-        with open(sp, encoding='utf-8-sig') as f:
-            loaded = json.load(f)
-        if isinstance(loaded, dict):
-            data = loaded
-    except Exception:
-        pass
+    if os.path.exists(sp):
+        try:
+            with open(sp, encoding='utf-8-sig') as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
     perms = data.setdefault('permissions', {})
+    if not isinstance(perms, dict):
+        return None
     deny = perms.setdefault('deny', [])
     if not isinstance(deny, list):
-        deny = perms['deny'] = []
+        return None
     added = existed = 0
     for pat in patterns:
         if pat in deny:
@@ -127,5 +132,9 @@ def deny_rules_screen(project_path, project_name):
     if not confirm(f"Write {len(found)} deny rules into this project's "
                    f".claude/settings.json?"):
         return
-    added, existed = merge_deny(project_path, [p for p, _ in found])
+    merged = merge_deny(project_path, [p for p, _ in found])
+    if merged is None:
+        flash("settings.json is not a plain JSON object: left unchanged", ok=False, secs=2.4)
+        return
+    added, existed = merged
     flash(f"Deny rules: {added} added, {existed} already present", ok=True, secs=1.8)

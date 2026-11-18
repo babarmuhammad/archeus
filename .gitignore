@@ -88,3 +88,12 @@ notes/reference/
 
 # iteration renders from the cluster/reference passes
 .qa/
+
+# Architecture
+docs/architecture/reference
+.collab/
+*.log
+*.sqlite
+*.sqlite3
+.pytest_cache/
+time-log.jsonl

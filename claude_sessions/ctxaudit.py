@@ -60,6 +60,8 @@ def protect_section(md_path, needle):
     end = start + 1
     while end < len(lines) and not lines[end].lstrip().startswith('#'):
         end += 1
+    if not lines[end - 1].endswith('\n'):
+        lines[end - 1] += '\n'
     out = (lines[:start] + [_c._KEEP_START + '\n'] + lines[start:end]
            + [_c._KEEP_END + '\n'] + lines[end:])
     return bool(_c.write_atomic(md_path, ''.join(out)))
@@ -84,8 +86,10 @@ def split_blocks(text):
             ('memory',   (_c._MEMORY_START, _c._MEMORY_END)),
             ('agents',   (_c._AGENTS_START, _c._AGENTS_END)),
             ('loop',     (_c._LOOP_START, _c._LOOP_END))):
-        if start in manual and end in manual:
-            i, j = manual.index(start), manual.index(end) + len(end)
+        i = manual.find(start)
+        j = manual.find(end, i + len(start)) if i >= 0 else -1
+        if j >= 0:
+            j += len(end)
             out[key] = manual[i:j]
             manual = manual[:i] + manual[j:]
         else:
@@ -214,6 +218,8 @@ def audit_items(project_path, proj_folder, settings=None):
         from . import hooks as hooks_mod
         for e in (hooks_mod._load().get('hooks', {}) or {}).get('SessionStart', []):
             for h in e.get('hooks', []) if isinstance(e, dict) else []:
+                if not isinstance(h, dict):
+                    continue
                 cmd = h.get('command', '')
                 # the rule TEXT, not the hook module: importing an entry point
                 # runs its stdout setup in this process, which is None in a

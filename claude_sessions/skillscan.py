@@ -40,17 +40,34 @@ manifest — every file, and exactly where it lands — is the part that always
 works, and it is the part that matters most.
 """
 
+import json
 import os
 import re
+import shlex
+import unicodedata
+from bisect import bisect_right
+from collections import namedtuple
 
 #: file bodies larger than this are truncated before matching. A skill that
 #: needs a megabyte of prose is already worth a second look.
 _MAX_BYTES = 400_000
+#: findings kept per rule per file: one bad file must not bury the report
+_PER_RULE = 20
 
 #: zero-width / bidi-override characters. ONE definition: the rule that FLAGS
 #: them and the sanitiser that strips them from the excerpt must never drift,
 #: or the report re-emits the character it just warned about.
-_HIDDEN_CHARS = '[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]'
+_HIDDEN_CHARS = ('[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff'
+                 '\U000e0000-\U000e007f\U000e0100-\U000e01ef]')
+#: what `_inert` shows: those, the controls, the variation selectors `_INVISIBLE`
+#: adds below and the Arabic letter mark, which no rule flags and still reorders text
+_UNSAFE = re.compile(_HIDDEN_CHARS + '|[\x00-\x09\x0b-\x1f\x7f-\x9f\u061c\ufe00-\ufe0f]')
+
+
+def _inert(s):
+    """*s* with every hidden or control character but a newline shown as U+2423: text
+    quoted from a hostile file must not reorder, hide or drive the terminal."""
+    return _UNSAFE.sub('\u2423', s)
 
 #: (severity, label, compiled pattern, why it matters)
 #: Ordered most-alarming first; the report keeps this order.
@@ -112,6 +129,363 @@ _TEXTY = {'.md', '.txt', '.py', '.js', '.ts', '.mjs', '.cjs', '.sh', '.bash',
           '.rb', '.pl', '.lua', '.go', '.rs', ''}
 
 
+#: one advisory finding of `lint`. Never blocks anything (owner item 96).
+Finding = namedtuple('Finding', 'rule severity line reason match')
+
+#: hidden text, and the variation selectors, which hide nothing after a symbol (emoji
+#: presentation) but are invisible after a letter
+_INVISIBLE = re.compile(_HIDDEN_CHARS[:-1] + '\ufe00-\ufe0f]')
+_BIDI = re.compile('[\u202a-\u202e\u2066-\u2069]')
+#: a regional flag: black flag, tag letters, cancel tag
+_TAG_FLAG = re.compile('\U0001f3f4[\U000e0020-\U000e007e]+\U000e007f')
+#: Cyrillic only: a Greek letter beside Latin is ordinary notation (\u00b5s, \u0394t)
+_MIXED = re.compile(r'\b(?=\w*[a-zA-Z])(?=\w*[\u0400-\u04ff])\w+')
+_OVERRIDE = re.compile(
+    r"(?i)\b(?:ignore|disregard|forget|override|bypass)\b[^.\n]{0,40}?"
+    r"\b(?:previous|prior|earlier|above|preceding|system)\b[^.\n]{0,30}?"
+    r"\b(?:instructions?|rules?|prompts?|directives?|guidelines?)\b"
+    r"|\b(?:do not|don't|never)\s+(?:mention|tell|reveal|disclose|inform|show)\b"
+    r"[^.\n]{0,60}?\buser\b(?!['\u2019]s)"
+    r"|\bhide\b[^.\n]{0,40}\bfrom the user\b")
+_DL = r"(?:curl|wget|iwr|irm|invoke-webrequest|invoke-restmethod|downloadstring)"
+# every gap is bounded: an unbounded one is quadratic on a line of repeated `curl `
+_FETCH = re.compile(
+    r"(?i)\b" + _DL + r"\b[^\n]{0,300}?\|\s*(?:sudo(?:\s+-\S+)*\s+)?(?:\S*/)?"
+    r"(?:env\s+(?:(?:-\S+|\w+=\S*)\s+){0,8}(?:\S*/)?)?"
+    r"(?:sh|bash|zsh|dash|ksh|python[23]?|node|perl|ruby|iex|invoke-expression|powershell|pwsh)\b"
+    r"|\b(?:sh|bash|zsh|source)\s+<\(\s*" + _DL + r"\b"
+    r"|(?:\b(?:sh|bash|zsh|dash)\s+-\w*c\s+|\beval\s+)[\"']?\$\(\s*" + _DL + r"\b"
+    r"|\b(?:iex|invoke-expression)\b[^\n]{0,80}?\b" + _DL + r"\b")
+_LINE_RULES = (
+    ('instruction-override', 'med', _OVERRIDE,
+     'tells the model to discard its instructions or to hide something from the user'),
+    ('fetch-and-execute', 'high', _FETCH, 'downloads and runs code in one step'),
+    ('mixed-script', 'med', _MIXED,
+     'a word mixing Latin and Cyrillic letters, which reads as one thing and matches as another'),
+)
+#: an image data URI may continue on following lines of pure base64
+_DATA_URI = re.compile(r'data:image/[\w.+-]+;base64,[A-Za-z0-9+/=]*(?:\n[A-Za-z0-9+/=]+)*')
+#: a run of base64, or one wrapped onto following lines of pure base64 (76 columns is usual)
+_B64 = re.compile(r'(?<![A-Za-z0-9+/])(?:[A-Za-z0-9+/]{40,}\n)*[A-Za-z0-9+/]+={0,2}')
+_SHELLS = {'sh', 'bash', 'zsh', 'dash', 'cmd', 'powershell', 'pwsh'}
+#: names an MCP server must not take: the model would read its tools as built-ins
+_BUILTIN_TOOLS = {'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebFetch',
+                  'WebSearch', 'Task', 'TodoWrite', 'NotebookEdit'}
+#: lint rules the older rules above already report; the lint adds nothing there
+_COVERED = {'hidden-unicode': 'hidden characters', 'bidi-control': 'hidden characters',
+            'instruction-override': 'overrides instructions', 'long-base64': 'encoded blob'}
+
+
+def _exe(tokens):
+    return re.sub(r'\.(exe|cmd|bat)$', '', re.split(r'[\\/]', tokens[0])[-1].lower())
+
+
+def _no_env(tokens):
+    i = 0
+    while i < len(tokens):
+        a = tokens[i]
+        if re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', a):
+            i += 1
+        elif _exe(tokens[i:]) == 'env':
+            i += 1
+            while i < len(tokens) and tokens[i].startswith('-'):
+                option, sep, value = tokens[i].partition('=')
+                if option in ('-S', '--split-string'):
+                    end = i + (1 if sep else 2)
+                    value = value if sep else next(iter(tokens[i + 1:end]), '')
+                    try:
+                        tokens = tokens[:i] + shlex.split(value) + tokens[end:]
+                    except ValueError:
+                        return []
+                    continue
+                i += 2 if option in ('-u', '--unset', '-C', '--chdir') and not sep else 1
+                if option == '--':
+                    break
+        else:
+            break
+    return tokens[i:]
+
+
+def _shell_flag(exe, a):
+    if exe in ('powershell', 'pwsh'):
+        f = a.lower()[1:]
+        return a[:1] in ('-', '/') and bool(f) and (
+            'command'.startswith(f) or 'encodedcommand'.startswith(f) or f == 'ec')
+    return a.lower() in ('/c', '/k') or bool(re.fullmatch(r'-[a-zA-Z]*c', a))
+
+
+def _wraps_shell(tokens):
+    tokens = _no_env(tokens)
+    return bool(tokens) and _exe(tokens) in _SHELLS and any(
+        _shell_flag(_exe(tokens), a) for a in tokens[1:])
+
+
+def _pinned(pkg):
+    number = r'(?:0|[1-9][0-9]*)'
+    pre = r'(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+    return bool(re.fullmatch(
+        r'(?:@[\w.-]+/)?[\w.-]+@' + number + r'\.' + number + r'\.' + number
+        + r'(?:-' + pre + r'(?:\.' + pre + r')*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?', pkg))
+
+
+def _local(pkg):
+    """A path on this machine, which npx runs without asking the registry. A share
+    (two leading separators) is the network, not this machine."""
+    return bool(re.match(r'\.{1,2}$|\.{1,2}[\\/]|[\\/](?![\\/])|~[\\/]|[A-Za-z]:[\\/]', pkg))
+
+
+#: options that take a value in the next token (or after `=`), npm's global ones
+#: included: `npm --cache /tmp exec evil` must not read `exec` as the cache path
+_VALUE_OPTS = {'--cache', '--registry', '--userconfig', '--globalconfig', '--prefix',
+               '-w', '--workspace', '--node-options', '--loglevel', '--script-shell'}
+#: launcher -> the verbs that run a package; the others are not fetches
+_VERBS = {'npm': ('exec', 'x'), 'pnpm': ('dlx',), 'yarn': ('dlx',), 'bun': ('x',)}
+#: npm's boolean flags: `--no` is `--no-yes`, and nopt takes a bare `true`/`false` after them as the value
+_BOOL_OPTS = {'--no', '--no-yes', '--no-install', '-y', '--yes'}
+
+
+def _verb_index(rest, verbs):
+    """Index of the subcommand in *rest* (npm's global flags come before it), or None.
+    A value-taking flag followed by a verb is read as a boolean flag before the verb:
+    `pnpm -w dlx` is a fetch even though npm's `-w` takes a value. A bare true/false
+    after a boolean flag is skipped for every launcher: only npm is known to read it
+    as the flag's value, and for the others a hidden verb would silence the finding."""
+    i = 0
+    while i < len(rest):
+        if rest[i] in verbs:
+            return i
+        if not rest[i].startswith('-'):
+            return None
+        if rest[i] in _VALUE_OPTS and i + 1 < len(rest) and rest[i + 1] in verbs:
+            return i + 1
+        bool_value = rest[i] in _BOOL_OPTS and i + 1 < len(rest) and rest[i + 1] in ('true', 'false')
+        i += 2 if rest[i] in _VALUE_OPTS or bool_value else 1
+    return None
+
+
+def _package_command(command, args):
+    tokens = _no_env([command, *args])
+    if not tokens:
+        return None, None, False
+    launcher, rest = _exe(tokens), tokens[1:]
+    if launcher in _VERBS:
+        at = _verb_index(rest, _VERBS[launcher])
+        if at is None:
+            return None, None, False
+        rest = rest[at + 1:]
+    elif launcher not in ('npx', 'bunx'):
+        return None, None, False
+    # npm reads its own flags on both sides of the package (nopt, up to `--`); npx,
+    # bunx, bun x, pnpm dlx and yarn dlx stop options at the first positional
+    anywhere = launcher == 'npm'
+    named, positional, call, no_install, yes = [], None, None, False, False
+    i = 0
+    while i < len(rest):
+        a = rest[i]
+        option, sep, value = a.partition('=')
+        if a == '--':
+            if positional is None:
+                positional = next(iter(rest[i + 1:]), None)
+            break
+        if not a.startswith('-'):
+            positional = positional or a
+            if not anywhere:
+                break
+            i += 1
+            continue
+        if launcher == 'npx' and option.lstrip('-') in ('npm', 'node-arg', 'n') and not sep:
+            i += 2      # npx-cli.js removes these with the token after them
+            continue
+        bare = option in _BOOL_OPTS and not sep and i + 1 < len(rest) and rest[i + 1] in ('true', 'false')
+        if bare and (anywhere or launcher == 'npx' and option in ('--no', '--no-yes')):
+            i += 1
+            sep, value = '=', rest[i]
+        elif bare and launcher not in ('npm', 'npx'):
+            yes = True      # unknown tool: the bare token is a package, so the fetch is not silenced
+        if launcher == 'npx' and option == '--no-install':
+            no_install = True       # npx-cli.js rewrites it to --yes=false whatever its value
+        elif option in ('--no', '--no-yes', '--no-install'):
+            if value == 'false':
+                yes = True
+            else:
+                no_install = not sep or value == 'true'
+        elif option in ('-y', '--yes'):
+            if value != 'false':
+                yes = True
+        elif option in _VALUE_OPTS or option in ('-p', '--package', '-c', '--call'):
+            if not sep:
+                i += 1
+                value = next(iter(rest[i:i + 1]), '')
+            if option in ('-p', '--package'):
+                named.append(value)
+            elif option in ('-c', '--call'):
+                call = value
+                if not anywhere:
+                    break
+        i += 1
+    if named:
+        package = next((p for p in named if not (_pinned(p) or _local(p))), named[0])
+    else:
+        package = call if call is not None else positional
+    return launcher, package, no_install and not yes
+
+
+def _npx_unpinned(tokens):
+    if not tokens:
+        return False
+    launcher, package, no_install = _package_command(tokens[0], tokens[1:])
+    if launcher and tokens[-1] in ('-p', '--package') and not no_install:
+        return True     # a starved -p names no package, so fail closed
+    return bool(launcher and package and not no_install and not (_pinned(package) or _local(package)))
+
+
+def _locate(lines, needle, start):
+    return next((i for i in range(start, len(lines)) if needle in lines[i]), start)
+
+
+def _hook_commands(node):
+    # iterative: a recursive walk overflows the stack on nesting that json.loads
+    # itself still accepts. Reversed pushes keep the depth-first order of the file.
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if isinstance(n, tuple):          # a queued `command` value, yielded in file order
+            yield n[0]
+        elif isinstance(n, dict):
+            for k, v in reversed(list(n.items())):
+                stack.append((v,) if k == 'command' and isinstance(v, str) else v)
+        elif isinstance(n, list):
+            stack.extend(reversed(n))
+
+
+def _json_findings(text, lines):
+    try:
+        data = json.loads(text)
+    except (ValueError, RecursionError):   # nesting past the parser's depth is unparsable too
+        return [Finding('json-unparsed', 'note', 1,
+                        'JSON that does not parse (comments?): its servers and hooks were not read', '')]
+    if not isinstance(data, dict):
+        return []
+    out = []
+    servers = data.get('mcpServers')
+    at = _locate(lines, '"mcpServers"', 0)
+    builtin = {t.casefold() for t in _BUILTIN_TOOLS}
+    for name, ent in (servers.items() if isinstance(servers, dict) else ()):
+        at = _locate(lines, json.dumps(name, ensure_ascii=False), at)
+        out += _line_findings(name, at + 1)
+        if name.casefold() in builtin:
+            out.append(Finding('tool-name-collision', 'high', at + 1,
+                               'a server named like a built-in tool', name))
+        if isinstance(ent, dict) and isinstance(ent.get('command'), str):
+            args = ent.get('args')
+            toks = [ent['command']] + [a for a in args if isinstance(a, str)] \
+                if isinstance(args, list) else ent['command'].split()
+            at = _locate(lines, '"command"', at)
+            out += _line_findings(' '.join(toks), at + 1)
+            if _wraps_shell(toks) or _npx_unpinned(toks):
+                out.append(Finding('mcp-command-exec', 'med', at + 1,
+                                   'an MCP server that runs a shell wrapper or fetches an unpinned package',
+                                   ' '.join(toks)))
+    at = _locate(lines, '"hooks"', 0)
+    for cmd in _hook_commands(data.get('hooks')):
+        at = _locate(lines, json.dumps(cmd, ensure_ascii=False), at)
+        out += _line_findings(cmd, at + 1)
+        if _wraps_shell(cmd.split()):
+            out.append(Finding('hook-command-exec', 'med', at + 1,
+                               'a hook that runs through a shell wrapper', cmd))
+    return out
+
+
+def _quiet(ch, prev):
+    """True for a character that hides nothing where it stands."""
+    if _BIDI.match(ch):
+        return True
+    if ch == '\u200d':
+        return unicodedata.category(prev) in ('So', 'Sk') or prev == '\ufe0f'
+    if '\ufe00' <= ch <= '\ufe0f':
+        return not unicodedata.category(prev).startswith('L')
+    return False
+
+
+def _line_findings(line, i):
+    out = []
+    line = _TAG_FLAG.sub('\U0001f3f4', line)
+    for m in _INVISIBLE.finditer(line):
+        if not _quiet(m.group(), line[m.start() - 1] if m.start() else ' '):
+            out.append(Finding('hidden-unicode', 'high', i,
+                               'an invisible character in text meant to be read by a model',
+                               'U+%04X' % ord(m.group())))
+            break
+    m = _BIDI.search(line)
+    if m:
+        out.append(Finding('bidi-control', 'high', i,
+                           'a bidirectional control that makes text read differently from how it is stored',
+                           'U+%04X' % ord(m.group())))
+    norm = unicodedata.normalize('NFKC', line)
+    for rule, sev, pat, why in _LINE_RULES:
+        m = pat.search(norm)
+        if m:
+            out.append(Finding(rule, sev, i, why, m.group()))
+    return out
+
+
+def _in_url(text, at):
+    return '://' in re.split(r'\s', text[max(0, at - 300):at + 3])[-1]
+
+
+def lint(text):
+    """Advisory static findings for one skill, agent, CLAUDE.md, MCP-config or
+    settings text. Pure: no I/O, no network, no model. A rule list is not a
+    security boundary."""
+    if text.startswith('\ufeff'):
+        text = ' ' + text[1:]
+    lines = text.split('\n')
+    out = []
+    for i, line in enumerate(lines, 1):
+        out += _line_findings(line, i)
+    uris = [m.span() for m in _DATA_URI.finditer(text)]
+    starts = [a for a, _ in uris]
+    for m in _B64.finditer(text):
+        run = m.group().replace('\n', '')
+        if len(run) < 200 or _in_url(text, m.start()):
+            continue
+        k = bisect_right(starts, m.start()) - 1
+        if not (k >= 0 and m.start() < uris[k][1]):
+            out.append(Finding('long-base64', 'med', text.count('\n', 0, m.start()) + 1,
+                               'a long base64 run that is not an image data URI', run[:20]))
+    if text.lstrip().startswith('{'):
+        out += _json_findings(text, lines)
+    seen, kept = {}, []
+    for f in out:
+        if (f.rule, f.line) not in seen and seen.get(f.rule, 0) < _PER_RULE:
+            seen[f.rule] = seen.get(f.rule, 0) + 1
+            seen[f.rule, f.line] = True
+            kept.append(f._replace(match=_inert(f.match.replace('\n', ' '))[:80]))
+    return sorted(kept, key=lambda f: f.line)
+
+
+def _description(text):
+    lines = text.split('\n')
+    if lines[0].strip() != '---':
+        return None
+    for i, line in enumerate(lines[1:], 2):
+        if line.strip() == '---':
+            return None
+        if line.startswith('description:'):
+            return i, line[len('description:'):].strip()
+
+
+def lint_drift(first, second):
+    """A skill whose `description:` differs between two reads of it. No production
+    caller yet: reading a skill twice arrives with owner item 96."""
+    a, b = _description(first), _description(second)
+    if a and b and a[1] != b[1]:
+        return [Finding('description-drift', 'med', b[0],
+                        'the description changed between two reads of the same skill',
+                        _inert(b[1])[:80])]
+    return []
+
+
 def _read(path):
     try:
         with open(path, 'r', encoding='utf-8', errors='replace') as f:
@@ -131,7 +505,7 @@ def scan_file(rel, text):
         raw = text[max(0, m.start() - 40):m.start() + 90].replace('\n', ' ')
         # never echo a hidden character back into the report — it would do the
         # same thing to the report that it does to the file
-        excerpt = re.sub(_HIDDEN_CHARS, '\u2423', raw).strip()
+        excerpt = _inert(raw).strip()
         out.append((sev, label, why, line, excerpt))
     return out
 
@@ -156,8 +530,14 @@ def scan_bundle(root, plan):
         if os.path.splitext(src)[1].lower() not in _TEXTY:
             continue
         n_scanned += 1
-        for sev, label, why, line, excerpt in scan_file(src, _read(full)):
+        text = _read(full)
+        old = scan_file(src, text)
+        for sev, label, why, line, excerpt in old:
             findings.append((sev, src, label, why, line, excerpt))
+        seen = {f[1] for f in old}
+        for f in lint(text):
+            if _COVERED.get(f.rule) not in seen:
+                findings.append((f.severity, src, f.rule, f.reason, f.line, f.match))
     findings.sort(key=lambda f: (_SEV_ORDER.get(f[0], 9), f[1], f[4]))
     return findings, {'files': n_files, 'scanned': n_scanned}
 
@@ -217,7 +597,7 @@ def report(plan, findings, stats, source=''):
     L.append('prose can direct the agent to do anything you could do. The')
     L.append('manifest above is the reliable part. Install only from a source')
     L.append('you would give your shell to.')
-    return '\n'.join(L)
+    return '\n'.join(_inert(x) for x in L)
 
 
 def review_gate(root, plan, source=''):

@@ -175,15 +175,17 @@ def _repoint(cmd, pkg_dir):
     name, so a dead statusline still reports itself as installed and prints
     nothing at all, on every turn, forever.
 
-    Identity is the script FILENAME — the same rule `hooks.install_memory_hook`
-    already uses to repair a stale path. Only a path that is BOTH dead and one
-    of ours is rewritten; anything the user wrote by hand is left alone.
+    Identity is the script FILENAME inside a former installation's package
+    directory — `hooks.former_script`, the one rule `hooks.install_memory_hook`
+    and its siblings repair a stale path by. Only a path that is BOTH dead and
+    one of ours is rewritten; anything the user wrote by hand is left alone.
     """
+    from . import hooks
     out = cmd
     for m in _PY_ARG.finditer(cmd):
         raw = m.group(1) or m.group(2)
-        if os.path.isfile(raw):
-            continue                       # still resolves — not ours to touch
+        if not hooks.former_script(raw):
+            continue                       # resolves, or was never ours to touch
         ours = os.path.join(pkg_dir, os.path.basename(raw))
         if os.path.isfile(ours):
             out = out.replace(raw, ours)
@@ -195,7 +197,6 @@ def _repoint(cmd, pkg_dir):
     # already the "strip the interpreter, keep the rest" rule, so the arguments
     # a template appended (`--denied`) survive.
     import sys
-    from . import hooks
     tail = hooks._PYEXE.sub('', out.strip())
     return f'"{sys.executable}" {tail}' if tail != out.strip() else out
 
@@ -501,28 +502,34 @@ def _sweep_claude_md(base, fixed, failed):
     if not os.path.isfile(path):
         return
     try:
-        with open(path, encoding='utf-8', errors='ignore') as f:
+        with open(path, encoding='utf-8', newline='') as f:
             text = f.read()
-    except OSError as e:
+    except (OSError, UnicodeDecodeError) as e:
         _c.log.warning('sweep could not read %s: %s', path, e)
         return          # a read failure is not a reason to retry for ever
     if _OLD_TAG not in text:
         return
     for name in _UNIQUE_BLOCKS:
         start, end = _OLD_TAG + name + ':START -->', _OLD_TAG + name + ':END -->'
-        if (text.count(start) == text.count(end) > 0
-                and (_NEW_TAG + name + ':START -->') in text):
-            ok, _before, text = claude_md.upsert_block(base, start, end, '')
+        new_start, new_end = _NEW_TAG + name + ':START -->', _NEW_TAG + name + ':END -->'
+        while (claude_md.block_span(text, new_start, new_end)
+               and claude_md.block_span(text, start, end)):
+            ok, _before, after = claude_md.upsert_block(base, start, end, '')
             if not ok:
                 failed.append((path, 'could not drop the superseded %s block' % name))
                 return
+            text = after
             fixed.append((path, 'dropped the superseded %s block' % name))
     new = text
     for name in _SENTINEL_BLOCKS:
         start, end = _OLD_TAG + name + ':START -->', _OLD_TAG + name + ':END -->'
-        if new.count(start) == new.count(end) > 0:
-            new = (new.replace(start, _NEW_TAG + name + ':START -->')
-                      .replace(end, _NEW_TAG + name + ':END -->'))
+        marks = claude_md._markers(new, start, end)
+        if marks and claude_md.well_formed(new, start, end):
+            for begin, _stop, is_start in reversed(marks):
+                old_tag = start if is_start else end
+                at = new.index(old_tag, begin)
+                new = (new[:at] + _NEW_TAG + name + old_tag[len(_OLD_TAG) + len(name):]
+                       + new[at + len(old_tag):])
     if new == text:
         return
     if _c.write_atomic(path, new):

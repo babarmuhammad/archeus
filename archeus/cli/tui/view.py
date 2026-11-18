@@ -1,0 +1,122 @@
+"""Terminal output for the TUI (p17-design-gate §9, §10): the one sanitiser, the
+one styler, and the few layout rules every screen shares.
+
+Terminal output is an injection boundary. Every string that came from Core — a
+mission title, model-written text, a file name, an output tail, a routing
+explanation, a relationship label, a refusal — goes through `clean()` before it
+is laid out, so it can never set the title, write the clipboard, move the
+cursor, hide text or forge a prompt. `Style.t()` is the only way screens put
+Core text on screen; `Style.paint()` is for the TUI's own words.
+"""
+
+import textwrap
+
+from claude_sessions import render
+from claude_sessions.render import _BREAK, clean
+
+from ._tables import CLASSES
+from .present import present
+from .tokens import COLOURS
+
+
+def clean_lines(s):
+    """Multi-line Core text: each line cleaned on its own."""
+    return [clean(x) for x in _BREAK.split('' if s is None else str(s))]
+
+
+#: the TUI's own characters, and what an ASCII-only terminal gets instead
+_ASCII = str.maketrans({'·': '-', '—': '-', '–': '-', '…': '...', '›': '>', '→': '->',
+                        '←': '<-', '“': '"', '”': '"', '’': "'", '‘': "'", '✓': '+',
+                        '✕': 'x', '●': '*', '◆': '!', '■': '#', '‖': '=', '◌': '~',
+                        '○': 'o', '◇': '^', '─': '-', '│': '|', '⏎': 'Enter',
+                        '↑': 'Up', '↓': 'Down'})
+_PROBE = ''.join(sorted({c['glyph'] for c in CLASSES.values()})) + '›—…→─│'
+
+
+def encodable(stream):
+    try:
+        _PROBE.encode(getattr(stream, 'encoding', None) or 'ascii')
+        return True
+    except (UnicodeEncodeError, LookupError):
+        return False
+
+
+class Style:
+    """Colour, glyphs and the theme, decided once at start (A7)."""
+
+    def __init__(self, colour=False, theme='dark', ascii=False):
+        self.colour, self.theme, self.ascii = colour, theme, ascii
+
+    @classmethod
+    def detect(cls, env, stream, vt_ok, theme=None):
+        """Monochrome when NO_COLOR is set (any value), TERM=dumb, the output is
+        not a terminal, or VT mode could not be enabled; ASCII glyphs when the
+        output encoding cannot carry the symbols, or ARCHEUS_TUI_ASCII=1."""
+        tty = bool(getattr(stream, 'isatty', lambda: False)())
+        colour = (vt_ok and tty and 'NO_COLOR' not in env and env.get('TERM') != 'dumb')
+        theme = theme or env.get('ARCHEUS_TUI_THEME') or 'dark'
+        if theme not in COLOURS:
+            theme = 'dark'
+        ascii = env.get('ARCHEUS_TUI_ASCII') == '1' or not encodable(stream)
+        return cls(colour, theme, ascii)
+
+    def paint(self, s, role=None, bold=False):
+        """The TUI's own text (never Core's: that is `t`)."""
+        if not self.colour or (role is None and not bold):
+            return s
+        n = COLOURS[self.theme].get(role) if role else None
+        code = ('\x1b[1m' if bold else '') + ('\x1b[38;5;%dm' % n if n is not None else '')
+        return code + s + '\x1b[0m' if code else s
+
+    def t(self, s, role=None, bold=False):
+        """Text that came from Core: cleaned, then styled."""
+        return self.paint(clean(s), role, bold)
+
+    def glyph(self, look):
+        c = CLASSES.get(look['cls'])
+        if c is None or look['glyph'] == '?':
+            return '?'
+        return c['ascii'] if self.ascii else c['glyph']
+
+    def badge(self, machine, state):
+        """A state is always glyph + label (+ colour), never colour alone."""
+        look = present(machine, state)
+        return self.paint(self.glyph(look) + ' ', look['role']) + self.t(look['label'] or state,
+                                                                           look['role'])
+
+    def line(self, text, width):
+        """The last step of every line: exactly *width* columns, and ASCII for an
+        ASCII terminal (the truncation mark too, at the same width)."""
+        if self.ascii:
+            text = text.translate(_ASCII).encode('ascii', 'replace').decode('ascii')
+        out = render.fit(text, width)
+        return out.replace('…', '.') if self.ascii else out
+
+
+def width_of(s):
+    return render.disp_width(s)
+
+
+def _columns(line, limit):
+    """*line* in pieces no wider than *limit* terminal columns."""
+    out, cur, used = [], '', 0
+    for ch in line:
+        w = render.disp_width(ch)
+        if cur and used + w > limit:
+            out.append(cur)
+            cur, used = '', 0
+        cur, used = cur + ch, used + w
+    return out + [cur]
+
+
+def wrap(text, width, indent=0):
+    """Core prose wrapped to the width, already cleaned. `textwrap` counts
+    characters, so a line of wide ones is cut again by columns: a line wider than
+    the frame would be truncated, and the text after the cut lost."""
+    limit = max(10, width - indent)
+    out = []
+    for para in clean_lines(text):
+        for line in textwrap.wrap(para, limit, break_long_words=True,
+                                  break_on_hyphens=False) or ['']:
+            out.extend(_columns(line, limit))
+    return [' ' * indent + x for x in out]

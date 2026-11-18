@@ -37,7 +37,8 @@ def worklog_path(project_path):
 
 def load_worklog(project_path):
     from . import jsonstore
-    return jsonstore.load(worklog_path(project_path), expect=list)
+    return [e for e in jsonstore.load(worklog_path(project_path), expect=list)
+            if isinstance(e, dict)]
 
 
 def save_worklog(project_path, entries):

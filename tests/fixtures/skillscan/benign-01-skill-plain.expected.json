@@ -1,0 +1,7 @@
+{
+  "fixture": "benign-01-skill-plain.md",
+  "kind": "skill",
+  "verdict": "benign",
+  "findings": [],
+  "note": "Plain review checklist; a correct lint reports nothing."
+}

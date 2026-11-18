@@ -1,5 +1,8 @@
 import os
 import json
+import secrets
+import threading
+import time
 import shutil
 import logging
 
@@ -539,9 +542,8 @@ def _take_flat(s, key):
     read off disk after these keys left _DEFAULT_SETTINGS. Popped from both, or
     save_settings() layers the bucket back over its output and the dead name
     survives every future migration."""
-    if key in s:
-        return s.pop(key)
-    return (s.get(_UNKNOWN_KEYS) or {}).pop(key, None)
+    parked = (s.get(_UNKNOWN_KEYS) or {}).pop(key, None)
+    return s.pop(key) if key in s else parked
 
 
 def _migrate_to_profiles(s):
@@ -641,9 +643,12 @@ def free_profile_port(s=None):
     THE one allocator: every place that creates a profile calls this, because
     two profiles sharing a port is two daemons racing for one bind and a session
     silently served by whichever won."""
-    used = {int(p.get('port') or 0) for p in provider_profiles(s)}
+    used = set()
+    for p in provider_profiles(s):
+        port = int(p.get('port') or 0)
+        used.update((port, port + 1))
     port = PROFILE_PORT_BASE
-    while port in used:
+    while port in used or port + 1 in used:
         port += 2
     return port
 
@@ -756,6 +761,15 @@ def _ensure_dir(d):
                 pass
 
 
+# ponytail: one lock for every path; a per-path lock if replaces ever queue
+_REPLACE_LOCK = threading.Lock()
+
+
+# A count of retries cannot tell a reader that is slow from one that never lets go,
+# so the budget is seconds: a descheduled reader gets time to close its handle.
+_REPLACE_BUDGET = 2.0
+
+
 def write_atomic(path, text, mode=None):
     """Temp file in the same directory, then os.replace. Returns True on success.
 
@@ -766,30 +780,51 @@ def write_atomic(path, text, mode=None):
     os.replace is atomic on NTFS, so a reader sees either the old file or the new
     one — never half of either.
 
-    `mode` is applied to the TEMP file, before the rename, so the permissions are
-    never briefly wrong on the real path. It is opt-in rather than a default of
-    0600: most of what goes through here is a project file (CLAUDE.md, a skill,
-    a generated agent) that other tools and other users legitimately read. Only
-    the files carrying a secret ask for it."""
+    `mode` is the permission the TEMP file is CREATED with, so the content is
+    never readable beyond it, not even briefly, and the real path never has the
+    wrong ones. It is opt-in rather than a default of 0600: most of what goes
+    through here is a project file (CLAUDE.md, a skill, a generated agent) that
+    other tools and other users legitimately read. Only the files carrying a
+    secret ask for it.
+
+    The temp name is unique per call: two threads of one process writing the
+    same path (GUI request threads) used to share `<path>.<pid>.tmp`, and all but
+    one write failed."""
+    created = False
     try:
         d = os.path.dirname(path)
         if d:
             _ensure_dir(d)
-        tmp = f'{path}.{os.getpid()}.tmp'
-        with open(tmp, 'w', encoding='utf-8', newline='') as f:
+        tmp = f'{path}.{os.getpid()}.{threading.get_ident()}.{secrets.token_hex(4)}.tmp'
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0),
+                     0o666 if mode is None else mode)
+        created = True
+        try:
+            f = os.fdopen(fd, 'w', encoding='utf-8', newline='')
+        except BaseException:
+            os.close(fd)
+            raise
+        with f:
             f.write(text)
-        if mode is not None:
-            try:
-                os.chmod(tmp, mode)
-            except OSError:
-                pass          # a filesystem with no mode bits is not a failure
-        os.replace(tmp, path)
+        with _REPLACE_LOCK:
+            deadline = time.monotonic() + _REPLACE_BUDGET
+            wait = 0.01
+            while True:
+                try:
+                    os.replace(tmp, path)
+                    break
+                except PermissionError:       # Windows: a reader holds the target open
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(wait)
+                    wait = min(wait * 2, 0.1)
         return True
     except Exception:
-        try:
-            os.unlink(tmp)
-        except Exception:
-            pass
+        if created:
+            try:
+                os.unlink(tmp)
+            except Exception:
+                pass
         return False
 
 
@@ -888,7 +923,7 @@ def all_config_dirs():
                       load_settings().get('accounts'))
 
 
-def account_env(cfgdir=None):
+def account_env(cfgdir=None, harness=None):
     """Environment for a `claude` invocation that must act on ONE account.
 
     `CLAUDE_CONFIG_DIR` is Claude Code's own account selector and it is honoured
@@ -899,10 +934,13 @@ def account_env(cfgdir=None):
     Popping `ANTHROPIC_API_KEY` is the non-obvious half: a key set in the
     environment shadows the account login, so the CLI would authenticate as the
     key's owner no matter which config dir it read.
+
+    `harness` names the account's harness when the caller knows it: a registered
+    home that `of` cannot place is otherwise taken for Claude Code's (T-648#R6).
     """
-    from .harnesses import of
+    from .harnesses import descriptor, of
     env = os.environ.copy()
-    d = of(cfgdir)
+    d = descriptor(harness) if harness else of(cfgdir)
     env[d['home_env']] = resolve_config_dir(cfgdir)
     for k in d.get('env_pops', ()):
         env.pop(k, None)

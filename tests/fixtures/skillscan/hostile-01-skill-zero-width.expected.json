@@ -1,0 +1,13 @@
+{
+  "fixture": "hostile-01-skill-zero-width.md",
+  "kind": "skill",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "hidden-unicode",
+      "line": 9,
+      "match": "U+200B"
+    }
+  ],
+  "note": "A zero width space hides inside the word delete on an instruction line."
+}

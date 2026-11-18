@@ -78,10 +78,9 @@ def _referenced_sessions(cfgdir):
     root = store.projects_root(cfgdir)
     last = jsonstore.load(os.path.join(root, 'last-session.json'), expect=dict)
     for v in last.values() if isinstance(last, dict) else []:
-        if isinstance(v, dict) and v.get('session_id'):
-            ids.add(v['session_id'])
-        elif isinstance(v, str):
-            ids.add(v)
+        sid = v.get('session_id') if isinstance(v, dict) else v
+        if isinstance(sid, str) and sid:
+            ids.add(sid)
     for proj in _subdirs(root):
         for n in _listdir(proj):
             # a .name or a tag entry means the user did something deliberate
@@ -149,8 +148,8 @@ def _prune_transcripts(cfgdir, cutoff, referenced, apply):
 
 def _remove(path, cfgdir):
     """Delete, but only from inside the account directory this sweep is for."""
-    root = os.path.normcase(os.path.abspath(cfgdir)) + os.sep
-    if not os.path.normcase(os.path.abspath(path)).startswith(root):
+    root = os.path.normcase(os.path.realpath(cfgdir)) + os.sep
+    if not os.path.normcase(os.path.realpath(path)).startswith(root):
         _c.log.error('diskgc: refusing to delete outside %s: %s', cfgdir, path)
         return
     try:
@@ -174,5 +173,15 @@ def _listdir(p):
 
 
 def _subdirs(p):
-    return [os.path.join(p, n) for n in _listdir(p)
-            if os.path.isdir(os.path.join(p, n))]
+    """Real folders directly under *p*. A link or junction that resolves
+    anywhere else is not one of this account's project folders, so it is
+    skipped rather than walked (os.path.realpath follows junctions on Windows
+    too, and os.path.isjunction is 3.12+ only)."""
+    base = os.path.normcase(os.path.realpath(p))
+    out = []
+    for n in _listdir(p):
+        child = os.path.join(p, n)
+        if os.path.isdir(child) and os.path.normcase(
+                os.path.dirname(os.path.realpath(child))) == base:
+            out.append(child)
+    return out

@@ -295,3 +295,18 @@ def test_every_headless_prompt_leaves_marked(monkeypatch, tmp_path):
     memory._claude_stdin('extract this module', str(tmp_path))
     assert sessions.HEADLESS_MARK in seen['prompt']
     assert seen['prompt'].startswith('extract this module')
+
+
+def test_protect_section_puts_the_end_marker_on_its_own_line(tmp_path):
+    """A section whose last line has no terminator must not leave the END marker
+    on that line: a marker sharing a line with prose is not a marker."""
+    from claude_sessions import ctxaudit
+    from claude_sessions.config import _KEEP_START, _KEEP_END
+    md = tmp_path / 'CLAUDE.md'
+    md.write_text('# Notes\nretain this', encoding='utf-8')
+    assert ctxaudit.protect_section(str(md), 'retain this') is True
+    out = md.read_text(encoding='utf-8')
+    assert 'retain this' + _KEEP_END not in out
+    kinds = [is_start for _b, _s, is_start in
+             claude_md._markers(out, _KEEP_START, _KEEP_END)]
+    assert kinds == [True, False]

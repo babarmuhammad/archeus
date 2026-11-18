@@ -70,11 +70,12 @@ def main(argv=None):
     if not cmd:
         return 0
     try:
+        from archeus.core.redact import redact
         from claude_sessions import store
         d = store.workdir(cwd)
         p = os.path.join(d, 'bash-log.txt')
         with open(p, 'a', encoding='utf-8') as f:
-            f.write(cmd + '\n')
+            f.write(redact(cmd) + '\n')
         _rotate(p)
     except Exception:
         pass

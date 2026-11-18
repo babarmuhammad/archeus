@@ -27,6 +27,9 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 from . import config as _c
+from . import netsafe
+
+netsafe.install()
 
 READY_TIMEOUT = 15
 
@@ -90,8 +93,8 @@ class Daemon:
         try:
             os.makedirs(os.path.dirname(p), exist_ok=True)
             with open(p, 'w', encoding='utf-8') as f:
-                json.dump({'pid': os.getpid(), 'port': int(port),
-                           'started': time.time()}, f)
+                json.dump({'pid': os.getpid(), 'port': int(port), 'started': time.time(),
+                           'ctime': _own_ctime()}, f)
         except Exception:
             pass
 
@@ -110,8 +113,8 @@ class Daemon:
         fails to bind. The claim is written before the spawn, not by the child
         after it starts."""
         p = self.lock_path()
-        payload = json.dumps({'pid': os.getpid(), 'port': int(port),
-                              'started': time.time()}).encode('utf-8')
+        payload = json.dumps({'pid': os.getpid(), 'port': int(port), 'started': time.time(),
+                              'ctime': _own_ctime(), 'claim': True}).encode('utf-8')
         try:
             os.makedirs(os.path.dirname(p), exist_ok=True)
         except Exception:
@@ -233,34 +236,51 @@ class Daemon:
                        'another process' % (self.label, port))
 
     def stop(self):
-        """(ok, message). Terminates the daemon named in the lock file."""
+        """(ok, message). Terminates the daemon named in the lock file. The lock
+        goes only once the daemon is gone or its pid is another process's: a
+        refused stop leaves it, or the daemon would be orphaned."""
         data = self.read_lock()
-        self.clear_lock()
         pid = (data or {}).get('pid')
         if not pid:
+            self.clear_lock()
+            return True, 'no %s recorded' % self.label
+        if data.get('claim'):       # the pid is the caller spawning the daemon, never the daemon
+            if time.time() - (data.get('started') or 0) < READY_TIMEOUT:
+                return False, '%s is still starting' % self.label
+            self.clear_lock()
             return True, 'no %s recorded' % self.label
         if pid_alive(pid) is False:
+            self.clear_lock()
             return True, '%s already gone' % self.label
-        if os.name == 'nt':
-            try:
-                import ctypes
-                k32 = ctypes.windll.kernel32
-                h = k32.OpenProcess(0x0001, False, int(pid))   # PROCESS_TERMINATE
-                if not h:
-                    return False, 'could not open pid %s' % pid
-                try:
-                    ok = bool(k32.TerminateProcess(h, 0))
-                finally:
-                    k32.CloseHandle(h)
-                return ok, 'stopped' if ok else 'could not stop pid %s' % pid
-            except Exception as e:
-                return False, str(e)
-        try:
-            import signal
-            os.kill(int(pid), signal.SIGTERM)
+        # a crashed daemon's pid may now belong to a stranger: only the process
+        # created when the lock was written is stopped
+        from . import proc
+        ctime = data.get('ctime')
+        if proc.kill_pid_tree(pid, ctime):
+            self.clear_lock()
             return True, 'stopped'
-        except Exception as e:
-            return False, str(e)
+        if ctime is None:
+            # an old lock was written after its daemon started, so a pid that started
+            # after the lock is a stranger's, and waiting on it would wedge every spawn.
+            # A file's time can trail the clock by a tick, so a start within 2 s of the
+            # lock is not told apart.
+            started = proc.process_started_at(pid)
+            if started is not None and os.path.getmtime(self.lock_path()) < started - 2:
+                self.clear_lock()
+                return True, 'pid %s started after the %s lock was written: lock cleared' % (pid, self.label)
+            return False, ('the %s lock has no creation time (written by an older version) '
+                           'and pid %s cannot be told from it; if pid %s is not the %s, '
+                           'delete %s' % (self.label, pid, pid, self.label, self.lock_path()))
+        now = proc.process_create_time(pid)
+        if now is not None and now != ctime:
+            self.clear_lock()
+            return False, 'pid %s is not the %s that wrote the lock' % (pid, self.label)
+        return False, 'could not stop pid %s' % pid
+
+
+def _own_ctime():
+    from . import proc
+    return proc.process_create_time(os.getpid())
 
 
 def pid_alive(pid):
@@ -296,11 +316,11 @@ def guard(handler, key, marker_path, label):
         got = (handler.headers.get('x-api-key')
                or (handler.headers.get('Authorization') or '').removeprefix('Bearer ')
                or '').strip()
-        # latin-1 bytes, not str: that is how the header was decoded, and a
-        # non-ASCII byte makes compare_digest raise TypeError — which lands in
-        # socketserver.handle_error as a traceback, unauthenticated.
-        if not hmac.compare_digest(got.encode('latin-1', 'replace'),
-                                   key.encode('latin-1', 'replace')):
+        # bytes, not str: compare_digest raises TypeError on non-ASCII str. Both
+        # sides are encoded the same injective way, so distinct credentials stay
+        # distinct; 'surrogatepass' keeps a stray surrogate from raising.
+        if not hmac.compare_digest(got.encode('utf-8', 'surrogatepass'),
+                                   key.encode('utf-8', 'surrogatepass')):
             return deny(handler, label, 'bad credentials')
     return True
 

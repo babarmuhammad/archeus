@@ -1,0 +1,7 @@
+{
+  "fixture": "benign-06-skill-plain-code-block.md",
+  "kind": "skill",
+  "verdict": "benign",
+  "findings": [],
+  "note": "Ordinary fenced python and a git diff --stat line are harmless."
+}

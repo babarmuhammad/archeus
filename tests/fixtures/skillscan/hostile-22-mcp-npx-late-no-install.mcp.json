@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sample": {
+      "command": "npx",
+      "args": ["evil","--no-install"]
+    }
+  }
+}

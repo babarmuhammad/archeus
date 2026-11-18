@@ -1,0 +1,9 @@
+{
+  "fixture": "hostile-23-mcp-github-version-suffix.mcp.json",
+  "kind": "mcp",
+  "verdict": "hostile",
+  "findings": [
+    {"rule": "mcp-command-exec", "line": 4, "match": "\"npx\""}
+  ],
+  "note": "A Git reference with a version-shaped suffix can move."
+}

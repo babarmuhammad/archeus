@@ -1,0 +1,7 @@
+{
+  "fixture": "benign-14-mcp-python-module.mcp.json",
+  "kind": "mcp",
+  "verdict": "benign",
+  "findings": [],
+  "note": "`python -m example_server` is a plain module invocation, not a wrapper."
+}

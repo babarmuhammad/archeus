@@ -1,0 +1,416 @@
+// The spatial view's model (p18-design-gate A7, A11, A13; the legacy
+// renderer's mechanisms, G4, ported — not copied): which nodes are visible
+// under the expanded set, edges lifted to the nearest visible ancestor,
+// focus + context, search that expands ancestors, and a path over the edges
+// already loaded. It only arranges what Core returned: no edge is created,
+// none is inferred, nothing is read. Pure.
+import { MOTIONS } from '../state/motion.ts';
+import { ALPHA } from '../state/tokens.ts';
+import { tierOf } from './relations.ts';
+
+export interface Ref {
+  kind: string;
+  id: string;
+}
+
+export interface GNode {
+  kind: string;
+  id: string;
+  label: string;
+  parent?: Ref | null;
+  machine?: string;
+  state?: string;
+  type?: string;
+  counts?: Record<string, unknown>;
+  attrs?: Record<string, unknown>;
+  endpoint?: boolean;
+  missing?: boolean;
+}
+
+export interface GEdge {
+  id: string;
+  from: Ref;
+  to: Ref;
+  field: string;
+  rel?: string | null;
+  tier?: string | null;
+  inactive?: boolean;
+  structural?: boolean;
+  count?: number;
+}
+
+export interface Hidden {
+  parent: Ref;
+  kind: string;
+  count: number;
+}
+
+export interface GraphData {
+  nodes: GNode[];
+  edges: GEdge[];
+  hidden?: Hidden[];
+  truncated?: boolean;
+}
+
+export interface Model {
+  nodes: GNode[];
+  byKey: Map<string, GNode>;
+  parentOf: Map<string, string | null>; // nearest LOADED ancestor, null at the top
+  children: Map<string, string[]>;
+  edges: GEdge[];
+}
+
+/** One key per node. The import graph's edges name paths; its nodes are
+ * directories and files — the same path is the same node (A5). */
+export function keyOf(r: Ref): string {
+  if (r.kind === 'path' || r.kind === 'directory' || r.kind === 'file') return 'path:' + r.id;
+  return r.kind + ':' + r.id;
+}
+
+export function build(d: GraphData): Model {
+  // what the cap cut becomes one "+N" stub per (parent, kind): drawn, listed,
+  // and opened by re-focusing on the parent (A6) — never a node of the domain
+  const stubs: GNode[] = (d.hidden ?? []).map((h) => ({
+    kind: 'more',
+    id: `${keyOf(h.parent)}:${h.kind}`,
+    label: `+${h.count} more ${h.kind.replace(/_/g, ' ')}`,
+    parent: h.parent,
+    endpoint: true,
+    counts: { hidden: h.count, of: h.kind },
+  }));
+  d = { ...d, nodes: [...d.nodes, ...stubs] };
+  const byKey = new Map<string, GNode>();
+  for (const n of d.nodes) byKey.set(keyOf(n), n);
+  const parentOf = new Map<string, string | null>();
+  const children = new Map<string, string[]>();
+  for (const n of d.nodes) {
+    const k = keyOf(n);
+    const p = n.parent ? keyOf(n.parent) : null;
+    const loaded = p && byKey.has(p) && p !== k ? p : null;
+    parentOf.set(k, loaded);
+    if (loaded) children.set(loaded, [...(children.get(loaded) ?? []), k]);
+  }
+  return { nodes: d.nodes, byKey, parentOf, children, edges: d.edges };
+}
+
+export function ancestors(m: Model, k: string): string[] {
+  const out: string[] = [];
+  let p = m.parentOf.get(k) ?? null;
+  for (let guard = 0; p && guard < 64; guard++) {
+    out.push(p);
+    p = m.parentOf.get(p) ?? null;
+  }
+  return out;
+}
+
+/** A node is visible iff every loaded ancestor is expanded. */
+export function visible(m: Model, expanded: ReadonlySet<string>): Set<string> {
+  const out = new Set<string>();
+  for (const n of m.nodes) {
+    const k = keyOf(n);
+    if (ancestors(m, k).every((a) => expanded.has(a))) out.add(k);
+  }
+  return out;
+}
+
+/** The nearest visible node standing for *k*: itself, or its first visible ancestor. */
+export function lift(m: Model, vis: ReadonlySet<string>, k: string): string | null {
+  if (vis.has(k)) return k;
+  for (const a of ancestors(m, k)) if (vis.has(a)) return a;
+  return null;
+}
+
+export interface Drawn {
+  id: string; // the first real edge's id (stable)
+  a: string;
+  b: string;
+  count: number; // how many real edges it stands for
+  edges: GEdge[];
+  tier?: string | null;
+  inactive: boolean;
+  structural: boolean;
+}
+
+/** Visible edges: every real edge lifted to its ends' nearest visible
+ * ancestors, one line per pair, counting what it stands for (G4). An edge
+ * whose ends lift to one node disappears inside it. */
+export function lifted(m: Model, vis: ReadonlySet<string>, keep: (e: GEdge) => boolean = () => true): Drawn[] {
+  const byPair = new Map<string, Drawn>();
+  for (const e of m.edges) {
+    if (!keep(e)) continue;
+    const a = lift(m, vis, keyOf(e.from));
+    const b = lift(m, vis, keyOf(e.to));
+    if (!a || !b || a === b) continue;
+    const pair = a < b ? `${a}|${b}` : `${b}|${a}`;
+    const d = byPair.get(pair);
+    const n = e.count ?? 1;
+    if (!d) byPair.set(pair, { id: e.id, a, b, count: n, edges: [e], tier: e.tier, inactive: !!e.inactive, structural: !!e.structural });
+    else {
+      d.count += n;
+      d.edges.push(e);
+      d.inactive = d.inactive && !!e.inactive;
+      d.structural = d.structural && !!e.structural;
+      if (d.tier !== e.tier) d.tier = null; // a mixed bundle claims no tier
+    }
+  }
+  return [...byPair.values()].sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+}
+
+/** The edges at *k* in the order keyboard traversal visits them (A11): the
+ * drawn edges' own order, so the same data always walks the same way. */
+export function around(drawn: readonly Drawn[], k: string): { edge: Drawn; other: string }[] {
+  return drawn.filter((d) => d.a === k || d.b === k).map((d) => ({ edge: d, other: d.a === k ? d.b : d.a }));
+}
+
+/** Focus + context (G4): the focused node and its neighbours stay; the rest dims. */
+export function inFocus(drawn: readonly Drawn[], k: string | null): Set<string> | null {
+  if (!k) return null;
+  const out = new Set([k]);
+  for (const x of around(drawn, k)) out.add(x.other);
+  return out;
+}
+
+/** Hop distance from *from* over the DRAWN edges (what the picture shows),
+ * breadth first; nodes it cannot reach are absent. */
+export function hops(drawn: readonly Drawn[], from: string): Map<string, number> {
+  const out = new Map([[from, 0]]);
+  const q = [from];
+  while (q.length) {
+    const x = q.shift()!;
+    for (const { other } of around(drawn, x)) {
+      if (out.has(other)) continue;
+      out.set(other, out.get(x)! + 1);
+      q.push(other);
+    }
+  }
+  return out;
+}
+
+/** Depth by graph distance (ADR-0025 §4, rulebook §12 and §24): the focus and
+ * its neighbours at full strength, two steps at alpha-tier1, three or more —
+ * or not connected in this picture — at alpha-tier2. While the impact view is
+ * on (*bright* given), the focus and what it affects are at full strength and
+ * the rest at alpha-tier2. Opaque (forced colours, reduced transparency):
+ * 1 / 1 / .64. No focus: every node at full strength (an empty map). */
+export function depthAlphas(
+  drawn: readonly Drawn[],
+  keys: readonly string[],
+  focus: string | null,
+  opaque = false,
+  bright?: ReadonlySet<string> | null,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!focus || !keys.includes(focus)) return out;
+  const mid = opaque ? 1 : ALPHA['alpha-tier1'];
+  const far = opaque ? 0.64 : ALPHA['alpha-tier2'];
+  const d = hops(drawn, focus);
+  for (const k of keys) {
+    const h = d.get(k) ?? Infinity;
+    out.set(k, bright ? (k === focus || bright.has(k) ? 1 : far) : h <= 1 ? 1 : h === 2 ? mid : far);
+  }
+  return out;
+}
+
+export const IMPACT_HOPS = { default: 2, max: 3 } as const;
+
+/** "What does this affect?" (ADR-0025 §3): the loaded objects reachable from
+ * *from* over RECORDED relations, both directions, within *n* hops — Core's
+ * relations in this read, nothing inferred and nothing asked for. `steps` is
+ * each one's distance; `shown` what stands for them in the picture (lifted to
+ * a drawn node); `edges` the drawn edges the search crossed, drawn as the path
+ * highlight. */
+export function impactOf(m: Model, vis: ReadonlySet<string>, drawn: readonly Drawn[], from: string, n: number = IMPACT_HOPS.default) {
+  const limit = Math.max(1, Math.min(IMPACT_HOPS.max, n));
+  const adj = new Map<string, [string, GEdge][]>();
+  for (const e of [...m.edges].sort((x, y) => (x.id < y.id ? -1 : 1))) {
+    if (tierOf(e) !== 'EXTRACTED') continue;
+    const a = keyOf(e.from);
+    const b = keyOf(e.to);
+    adj.set(a, [...(adj.get(a) ?? []), [b, e]]);
+    adj.set(b, [...(adj.get(b) ?? []), [a, e]]);
+  }
+  const steps = new Map<string, number>();
+  const crossed: GEdge[] = [];
+  const seen = new Set([from]);
+  let ring = [from];
+  for (let h = 1; h <= limit && ring.length; h++) {
+    const next: string[] = [];
+    for (const x of ring)
+      for (const [y, e] of adj.get(x) ?? []) {
+        if (seen.has(y) || !m.byKey.has(y)) continue;
+        seen.add(y);
+        steps.set(y, h);
+        crossed.push(e);
+        next.push(y);
+      }
+    ring = next;
+  }
+  const shown = new Set<string>();
+  for (const k of steps.keys()) {
+    const l = lift(m, vis, k);
+    if (l) shown.add(l);
+  }
+  const edges = new Set<string>();
+  for (const e of crossed) {
+    const a = lift(m, vis, keyOf(e.from));
+    const b = lift(m, vis, keyOf(e.to));
+    const d = a && b && a !== b ? drawn.find((x) => (x.a === a && x.b === b) || (x.a === b && x.b === a)) : null;
+    if (d) edges.add(d.id);
+  }
+  return { steps, shown, edges, hops: limit };
+}
+
+/** Toggle one node's children (expand/collapse by parent). */
+export function toggle(expanded: ReadonlySet<string>, k: string): Set<string> {
+  const next = new Set(expanded);
+  if (next.has(k)) next.delete(k);
+  else next.add(k);
+  return next;
+}
+
+/** Everything with children, expanded: what a focused neighbourhood opens as. */
+export function allExpanded(m: Model): Set<string> {
+  return new Set(m.children.keys());
+}
+
+/** Search (A13): loaded nodes whose label matches, each made visible by
+ * expanding its ancestors (G4). Never a request to Core. */
+export function search(m: Model, expanded: ReadonlySet<string>, q: string): { hits: string[]; expanded: Set<string> } {
+  const needle = q.trim().toLowerCase();
+  const next = new Set(expanded);
+  if (!needle) return { hits: [], expanded: next };
+  const hits: string[] = [];
+  for (const n of m.nodes) {
+    if (n.kind === 'more' || !n.label.toLowerCase().includes(needle)) continue;
+    const k = keyOf(n);
+    hits.push(k);
+    for (const a of ancestors(m, k)) next.add(a);
+  }
+  return { hits, expanded: next };
+}
+
+/** A path between two loaded nodes over loaded edges only (A13): breadth
+ * first, deterministic; null when none — never a traversal Core is asked for. */
+export function path(m: Model, from: string, to: string): string[] | null {
+  if (!m.byKey.has(from) || !m.byKey.has(to)) return null;
+  const adj = new Map<string, string[]>();
+  for (const e of [...m.edges].sort((x, y) => (x.id < y.id ? -1 : 1))) {
+    const a = keyOf(e.from);
+    const b = keyOf(e.to);
+    adj.set(a, [...(adj.get(a) ?? []), b]);
+    adj.set(b, [...(adj.get(b) ?? []), a]);
+  }
+  const prev = new Map<string, string>([[from, from]]);
+  const q = [from];
+  while (q.length) {
+    const x = q.shift()!;
+    if (x === to) break;
+    for (const y of adj.get(x) ?? []) {
+      if (prev.has(y) || !m.byKey.has(y)) continue;
+      prev.set(y, x);
+      q.push(y);
+    }
+  }
+  if (!prev.has(to)) return null;
+  const out = [to];
+  while (out[0] !== from) out.unshift(prev.get(out[0])!);
+  return out;
+}
+
+/** What path tracing says about two marked ends (A13): `found`, or `none`
+ * within the loaded neighbourhood — never a question for Core. */
+export function pathStatus(m: Model, ends: readonly string[]): 'found' | 'none' | null {
+  if (ends.length !== 2) return null;
+  return path(m, ends[0], ends[1]) ? 'found' : 'none';
+}
+
+/** The executions that are live right now, by Core's state (A8): their
+ * presentation class is `active`. */
+export function liveExecutions(m: Model, isActive: (machine: string, state: string) => boolean): Set<string> {
+  const out = new Set<string>();
+  for (const n of m.nodes)
+    if (n.kind === 'execution' && n.machine && n.state && isActive(n.machine, n.state)) out.add(keyOf(n));
+  return out;
+}
+
+/** The nodes carrying an activity halo (ADR-0024 §5-6, P18 A8 as amended):
+ * every loaded node whose presentation class, by Core's state in the read,
+ * is `active`. Nothing else makes one — not a frame, a message, a recent
+ * render or a mount. Hysteresis is the read's: the view draws the last read
+ * it holds, which the cache keeps across a lost stream, a resync and a failed
+ * re-read, so a halo clears only when a read shows the work no longer live. */
+export function haloed(m: Model, isActive: (machine: string, state: string) => boolean): Set<string> {
+  const out = new Set<string>();
+  for (const n of m.nodes) if (n.machine && n.state && isActive(n.machine, n.state)) out.add(keyOf(n));
+  return out;
+}
+
+/** The one edge a live execution's pulse travels: its `executions.task_id`
+ * edge, as drawn (lifted) now. */
+export function pulseEdge(drawn: readonly Drawn[], exec: string): Drawn | null {
+  return drawn.find((d) => d.edges.some((e) => e.field === 'executions.task_id' && keyOf(e.from) === exec)) ?? null;
+}
+
+// the pulse's duration and rate are the motion registry's (ADR-0024 §6)
+export const PULSE_MS = MOTIONS['execution-pulse'].max_ms;
+export const PULSE_EVERY_MS = MOTIONS['execution-pulse'].min_interval_ms;
+
+/** Whether a stream frame pulses an edge (A8), and which: an `execution.*`
+ * frame about a loaded execution whose edge is live, at most once per
+ * PULSE_EVERY_MS per edge, never under reduced motion. The frame says only
+ * WHICH row moved; whether it is live is Core's state in the read. */
+export function pulseFor(
+  f: { event: string; data?: unknown },
+  drawn: readonly Drawn[],
+  live: ReadonlySet<string>,
+  last: ReadonlyMap<string, number>,
+  now: number,
+  reduced: boolean,
+): Drawn | null {
+  const subject = (f.data as { subject?: Ref } | undefined)?.subject;
+  if (reduced || !subject || subject.kind !== 'execution' || !f.event.startsWith('execution.')) return null;
+  const d = pulseEdge(drawn, keyOf(subject));
+  if (!d || !live.has(d.id)) return null;
+  return now - (last.get(d.id) ?? -Infinity) < PULSE_EVERY_MS ? null : d;
+}
+
+/** One travelling marker: the drawn edge it runs along, from the execution's
+ * end to the task's end (both visible node keys). */
+export interface Travel {
+  edge: string;
+  from: string;
+  to: string;
+}
+
+/** Whether a stream frame sends a travelling marker (ADR-0024 §6, rulebook
+ * A-04), and where: an `execution.*` frame about a loaded execution whose
+ * `executions.task_id` edge is drawn and live, one per frame (a frame is one
+ * output batch). Source and target are Core's — the frame's subject and its
+ * recorded edge, lifted to what is visible — never geometry, adjacency or a
+ * guess. Reduced motion is the timeline's to refuse, so the event still counts
+ * as presented. */
+export function markerFor(
+  f: { event: string; data?: unknown },
+  m: Model,
+  vis: ReadonlySet<string>,
+  drawn: readonly Drawn[],
+  live: ReadonlySet<string>,
+): Travel | null {
+  const subject = (f.data as { subject?: Ref } | undefined)?.subject;
+  if (!subject || subject.kind !== 'execution' || !f.event.startsWith('execution.')) return null;
+  const x = keyOf(subject);
+  const d = pulseEdge(drawn, x);
+  if (!d || !live.has(d.id)) return null;
+  const from = lift(m, vis, x);
+  if (from !== d.a && from !== d.b) return null;
+  return { edge: d.id, from, to: from === d.a ? d.b : d.a };
+}
+
+/** A marker's timeline target, and back: the edge, its direction and the
+ * event's seq — one execution's successive batches are separate markers on
+ * the same edge, each drawn, not one key the timeline's read collapses. */
+export const markerTarget = (t: Travel, seq: number | undefined): string => JSON.stringify([t.edge, t.from, t.to, seq ?? null]);
+export function travelOf(target: string): Travel {
+  const [edge, from, to] = JSON.parse(target) as string[];
+  return { edge, from, to };
+}

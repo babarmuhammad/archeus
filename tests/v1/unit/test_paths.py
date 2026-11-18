@@ -1,0 +1,287 @@
+"""`ARCHEUS_HOME` resolution (target-architecture §5.1) and the execution path
+contract (execution-architecture §3.1)."""
+
+import os
+
+import pytest
+
+from archeus.core.domain import ids
+from archeus.infra import paths
+
+HOME = os.path.expanduser('~')
+
+
+def test_the_override_wins_on_every_platform(tmp_path):
+    for plat in ('win32', 'darwin', 'linux'):
+        env = {'ARCHEUS_HOME': str(tmp_path / 'h'), 'LOCALAPPDATA': 'C:/L',
+               'XDG_DATA_HOME': '/xdg'}
+        assert paths.archeus_home(env, plat) == os.path.abspath(str(tmp_path / 'h'))
+
+
+def test_windows_uses_localappdata():
+    got = paths.archeus_home({'LOCALAPPDATA': os.path.join(HOME, 'LAD')}, 'win32')
+    assert got == os.path.abspath(os.path.join(HOME, 'LAD', 'Archeus'))
+    fallback = paths.archeus_home({}, 'win32')
+    assert fallback == os.path.abspath(os.path.join(HOME, 'AppData', 'Local', 'Archeus'))
+
+
+def test_macos_uses_application_support():
+    assert paths.archeus_home({}, 'darwin') == os.path.abspath(
+        os.path.join(HOME, 'Library', 'Application Support', 'Archeus'))
+
+
+def test_linux_uses_xdg_data_home_only_when_absolute():
+    xdg = os.path.abspath(os.path.join(HOME, 'xdg-data'))
+    assert paths.archeus_home({'XDG_DATA_HOME': xdg}, 'linux') == os.path.join(xdg, 'archeus')
+    default = os.path.abspath(os.path.join(HOME, '.local', 'share', 'archeus'))
+    assert paths.archeus_home({'XDG_DATA_HOME': 'relative/dir'}, 'linux') == default
+    assert paths.archeus_home({'ARCHEUS_HOME': '  '}, 'linux') == default
+
+
+def test_it_resolves_at_call_time_not_import_time(monkeypatch, tmp_path):
+    monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path / 'one'))
+    first = paths.run_dir()
+    monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path / 'two'))
+    assert paths.run_dir() != first and paths.run_dir().startswith(str(tmp_path / 'two'))
+
+
+@pytest.mark.parametrize('plat', ['win32', 'darwin', 'linux'])
+def test_the_default_is_never_the_legacy_dot_archeus(plat):
+    got = paths.archeus_home({}, plat)
+    assert os.path.normcase(got) != os.path.normcase(os.path.join(HOME, '.archeus'))
+    assert '.archeus' not in os.path.normcase(got).replace('\\', '/').split('/')
+
+
+@pytest.mark.parametrize('bad', [os.path.join('~', '.archeus'),
+                                 os.path.join(HOME, '.archeus'),
+                                 os.path.join(HOME, 'proj', '.archeus', 'v1')])
+def test_a_legacy_archeus_directory_is_refused_even_when_named(bad):
+    with pytest.raises(ValueError, match='legacy'):
+        paths.archeus_home({'ARCHEUS_HOME': bad}, 'linux')
+
+
+@pytest.mark.parametrize('rel', ['rel', os.path.join('.', 'h'), os.path.join('..', 'h')])
+def test_a_relative_archeus_home_is_refused_not_bound_to_the_working_directory(rel):
+    with pytest.raises(ValueError, match='absolute'):
+        paths.archeus_home({'ARCHEUS_HOME': rel}, 'linux')
+
+
+def test_resolving_touches_no_disk(tmp_path):
+    home = tmp_path / 'not-created'
+    paths.archeus_home({'ARCHEUS_HOME': str(home)})
+    paths.ExecPaths(ids.new_id('execution'), run=str(home / 'run'))
+    assert not home.exists()
+
+
+def test_the_execution_files_of_the_process_io_contract(archeus_home):
+    exe = ids.new_id('execution')
+    p = paths.exec_paths(exe)
+    base = os.path.join(str(archeus_home), 'run', 'exec', exe)
+    assert p.dir == base
+    assert {os.path.basename(x) for x in (p.spawning, p.prompt, p.stream, p.pid, p.ended)} == {
+        'spawning', 'prompt.txt', 'stream.jsonl', 'pid.json', 'ended'}
+    assert all(os.path.dirname(x) == base for x in (p.spawning, p.prompt, p.stream, p.pid, p.ended))
+    assert paths.processes_registry() == os.path.join(str(archeus_home), 'run', 'processes.jsonl')
+
+
+def test_the_execution_interface_is_one_directory_per_class(archeus_home):
+    """PV-20 §7.5 (R2): requests (1), Core's answers (2), sentinels (3) and the
+    execution's own workspace and state (7) are four directories inside the one that
+    stays Core's, derived from the id alone, and never one another."""
+    exe = ids.new_id('execution')
+    p = paths.exec_paths(exe)
+    classes = (p.req, p.res, p.ctl, os.path.dirname(p.work))
+    assert len({os.path.normcase(c) for c in classes}) == 4
+    assert all(os.path.dirname(c) == p.dir for c in classes)
+    assert [os.path.basename(c) for c in classes] == [
+        paths.REQUEST_DIR, paths.RESPONSE_DIR, paths.SENTINEL_DIR, paths.PRIVATE_DIR]
+    assert os.path.dirname(p.state) == os.path.dirname(p.work) and p.state != p.work
+    assert paths.exec_paths(exe).req == p.req
+    other = paths.exec_paths(ids.new_id('execution'))
+    assert not {p.req, p.res, p.ctl, p.work, p.state} & {
+        other.req, other.res, other.ctl, other.work, other.state}
+
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
+ARCH = os.path.join(ROOT, 'docs', 'architecture')
+
+
+def _arch_docs():
+    for name in sorted(os.listdir(ARCH)):
+        if name.endswith('.md'):
+            yield name, open(os.path.join(ARCH, name), encoding='utf-8').read()
+
+
+def test_v1_and_the_legacy_qt_shell_own_disjoint_entries():
+    fold = lambda names: {n.lower() for n in names}          # NTFS is case-insensitive
+    assert not fold(paths.V1_OWNED) & fold(paths.QT_OWNED)
+
+
+def test_the_ownership_table_is_the_declaration():
+    """target-architecture §5.1's table, paths.V1_OWNED/QT_OWNED and every
+    `<ARCHEUS_HOME>/<entry>` the documents mention must agree."""
+    import re
+    text = open(os.path.join(ARCH, 'target-architecture.md'), encoding='utf-8').read()
+    table = text[text.index('**Ownership inside `<ARCHEUS_HOME>`.**'):]
+    table = table[:table.index('\n\n', table.index('| Entry |'))]
+    rows = {}
+    for line in table.splitlines():
+        if line.startswith('| `'):
+            entry, owner = [c.strip() for c in line.strip('|').split('|')][:2]
+            for name in re.findall(r'`([^`]+?)/?`', entry):
+                rows[name] = owner
+    assert {n for n, o in rows.items() if o == 'V1'} == set(paths.V1_OWNED)
+    assert {n for n, o in rows.items() if o == 'legacy Qt shell'} == set(paths.QT_OWNED)
+    mentioned = set()
+    for _name, doc in _arch_docs():
+        mentioned |= set(re.findall(r'<ARCHEUS_HOME>/([A-Za-z0-9_.-]+)', doc))
+    assert mentioned <= set(paths.V1_OWNED), mentioned - set(paths.V1_OWNED)
+
+
+def test_every_v1_path_lands_in_a_v1_owned_entry(archeus_home):
+    for p in (paths.run_dir(), paths.processes_registry(),
+              paths.exec_paths(ids.new_id('execution')).stream):
+        top = os.path.relpath(p, str(archeus_home)).split(os.sep)[0]
+        assert top in paths.V1_OWNED, p
+
+
+def test_the_qt_shell_still_names_itself_archeus():
+    """The ownership table exists because of this one call: Qt derives its
+    per-user directories from the application name. If it changes, the table
+    in target-architecture §5.1 must change with it."""
+    src = open(os.path.join(ROOT, 'claude_sessions', 'gui_qt.py'), encoding='utf-8').read()
+    assert "app.setApplicationName('archeus')" in src
+
+
+def test_no_instruction_deletes_archeus_home_as_a_whole():
+    """A reset removes V1's entries by name; the directory also holds the
+    legacy Qt cache. Any sentence about deleting ARCHEUS_HOME must say never."""
+    import re
+    bad = []
+    for name, doc in _arch_docs():
+        for sent in re.split(r'(?<=[.!?])\s+', re.sub(r'\s+', ' ', doc)):
+            if (re.search(r'\b(delete|remove|rm)\b', sent, re.I)
+                    and re.search(r'`?ARCHEUS_HOME`? directory', sent)
+                    and 'never' not in sent.lower()):
+                bad.append('%s: %s' % (name, sent[:100]))
+    assert not bad, bad
+
+
+@pytest.mark.parametrize('bad', ['../../etc', 'exe_../x', 'msn_01J00000000000000000000000',
+                                 'exe_' + '0' * 25, ''])
+def test_only_an_execution_id_can_name_an_execution_directory(bad):
+    with pytest.raises(ValueError):
+        paths.ExecPaths(bad)
+
+
+# ── worktrees (target-architecture §5.1, amendment 2026-10-14) ──
+
+PRJ, MSN = ids.new_id('project'), ids.new_id('mission')
+WORKTREE = {'t1': lambda: paths.task_worktree(PRJ, MSN, 't1'),
+            '_mission': lambda: paths.mission_worktree_path(PRJ, MSN)}
+
+
+@pytest.mark.parametrize('leaf', sorted(WORKTREE))
+def test_a_new_worktree_is_named_by_the_mission_ulid_alone(archeus_home, leaf):
+    want = os.path.join(str(archeus_home), 'worktrees', MSN[len('msn_'):], leaf)
+    assert WORKTREE[leaf]() == want
+    assert not archeus_home.exists()
+
+
+@pytest.mark.parametrize('leaf', sorted(WORKTREE))
+def test_a_worktree_of_the_earlier_layout_is_still_found(archeus_home, leaf):
+    legacy = archeus_home / 'worktrees' / PRJ / MSN / leaf
+    legacy.mkdir(parents=True)
+    assert WORKTREE[leaf]() == str(legacy)
+
+
+@pytest.mark.parametrize('leaf', sorted(WORKTREE))
+def test_only_a_directory_counts_as_an_earlier_worktree(archeus_home, leaf):
+    legacy = archeus_home / 'worktrees' / PRJ / MSN / leaf
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text('')
+    assert WORKTREE[leaf]() == os.path.join(str(archeus_home), 'worktrees', MSN[len('msn_'):], leaf)
+
+
+@pytest.mark.parametrize('leaf', ['..', '.', '../x', '../../../evil', 'C:/evil', '/evil', 'a/b',
+                                  'a\\b', '', 'a b'])
+def test_a_task_key_that_is_not_a_plain_name_cannot_leave_the_mission_directory(archeus_home, leaf):
+    with pytest.raises(ValueError):
+        paths.task_worktree(PRJ, MSN, leaf)
+
+
+ALIASES = ['...', 'real.', 'a..', 'x.', '.git', '.GIT', 'NUL', 'nul.txt', 'CON', 'aux.log',
+           'com1', 'LPT9.x', '_mission', '_MISSION']
+
+
+@pytest.mark.parametrize('leaf', ALIASES)
+def test_a_task_key_windows_resolves_to_another_directory_names_no_worktree(archeus_home, leaf):
+    """`...` is the mission directory and `real.` the worktree of task `real`: a task got
+    another task's worktree, or the directory holding all of them (review R3)."""
+    with pytest.raises(ValueError):
+        paths.task_worktree(PRJ, MSN, leaf)
+
+
+@pytest.mark.parametrize('leaf', ['t1', 'real', 'a.b', 'task-1_x', 'v1.2', '.hidden', 'console',
+                                  'com10', 'T-7', 'git', 'mission'])
+def test_the_control_an_ordinary_task_key_keeps_its_worktree(archeus_home, leaf):
+    want = os.path.join(str(archeus_home), 'worktrees', MSN[len('msn_'):], leaf)
+    assert paths.task_worktree(PRJ, MSN, leaf) == want
+
+
+def test_the_mission_worktree_is_still_named_by_its_own_resolver(archeus_home):
+    assert paths.mission_worktree_path(PRJ, MSN) == os.path.join(
+        str(archeus_home), 'worktrees', MSN[len('msn_'):], '_mission')
+
+
+@pytest.mark.parametrize('prj, msn', [('prj_x', MSN), (PRJ, 'msn_'), (PRJ, 'msn_x/y'),
+                                      (PRJ, 'exe_' + MSN[4:]), (None, MSN)])
+def test_a_worktree_is_named_only_by_a_project_and_a_mission_id(archeus_home, prj, msn):
+    for fn in (lambda: paths.task_worktree(prj, msn, 't1'),
+               lambda: paths.mission_worktree_path(prj, msn)):
+        with pytest.raises(ValueError):
+            fn()
+
+
+
+def test_an_id_error_does_not_echo_the_whole_value():
+    """T-655#18: the message carried the caller's object whole."""
+    with pytest.raises(ValueError) as err:
+        paths.repo_store('x' * 10 ** 6)
+    assert len(str(err.value)) < 200
+
+
+def test_the_home_directory_comes_from_the_environment_it_is_given():
+    """T-655#6: expanduser read the live process environment, not the injected one."""
+    want = os.path.abspath(os.path.join('/fake', '.local', 'share', 'archeus'))
+    assert paths.archeus_home({'HOME': '/fake', 'XDG_DATA_HOME': ''}, 'linux') == want
+    want = os.path.abspath(os.path.join('/fake', 'AppData', 'Local', 'Archeus'))
+    assert paths.archeus_home({'USERPROFILE': '/fake'}, 'win32') == want
+
+
+def test_a_link_at_the_earlier_layouts_directory_is_not_a_worktree(archeus_home, monkeypatch):
+    """T-655#10: isdir follows links, so a link there was returned as the worktree."""
+    import stat
+    from types import SimpleNamespace
+    legacy = os.path.join(archeus_home, 'worktrees', PRJ, MSN, 't1')
+    os.makedirs(legacy)
+    assert paths.task_worktree(PRJ, MSN, 't1') == legacy
+    real = os.lstat
+    link = SimpleNamespace(st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT,
+                           st_mode=stat.S_IFLNK)
+    monkeypatch.setattr(os, 'lstat', lambda p, *a, **kw: (
+        link if os.fspath(p) == legacy else real(p, *a, **kw)))
+    assert paths.task_worktree(PRJ, MSN, 't1') == os.path.join(
+        archeus_home, 'worktrees', MSN.split('_', 1)[1], 't1')
+
+
+def test_the_run_directories_a_call_creates_are_private(archeus_home, monkeypatch):
+    """T-655#15: makedirs without a mode made run/ and run/calls with the umask's default."""
+    os.makedirs(archeus_home, exist_ok=True)
+    modes = []
+    real = os.makedirs
+    monkeypatch.setattr(os, 'makedirs', lambda d, mode=0o777, **kw: (
+        modes.append(mode), real(d, mode, **kw))[1])
+    paths.fresh_call_dir(ids.new_id('route_decision'))
+    assert modes and set(modes) == {0o700}

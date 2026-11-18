@@ -9,6 +9,8 @@ from .ui import (text_input, paths_menu, _cls, wait_event, help_screen,
                  flash, menu, confirm)
 from . import render
 from . import store
+from . import config as _c
+from . import status_hook
 from .claude_md import scaffold_claude_md, ai_scaffold_claude_md
 from .system_prompt import edit_system_prompt
 
@@ -201,6 +203,14 @@ def _arch_of(folder):
     return os.path.join(folder, 'archived') if folder else None
 
 
+def _status_mark(state):
+    """Read the palette live: `apply_theme` rebinds config's globals, which a
+    name imported at module load never sees."""
+    return {status_hook.WORKING: f"{_c.C_OK}● working{_c.C_RESET}",
+            status_hook.NEEDS_INPUT: f"{_c.C_WARN}● needs input{_c.C_RESET}",
+            status_hook.IDLE: f"{_c.C_DIM}○ idle{_c.C_RESET}"}.get(state, '')
+
+
 def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_accounts=None):
     """extra_accounts: optional [(acct_name, folder)] for OTHER accounts that
     also have sessions for this same project. Their sessions are merged into
@@ -333,6 +343,7 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
 
     def build_rows(active):
         tags_map = load_tags(proj_folder) if not show_archived else {}
+        status_of = {}
         if show_archived:
             rows = [(f"{'─' * W}", None)]
             if not active:
@@ -361,6 +372,13 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
                 disp = f"{badge}{preview}"
             else:
                 disp = f"{badge}{C_DIM}(no preview — {date}){C_RESET}"
+            if not show_archived:
+                cfg = os.path.dirname(os.path.dirname(s_folder))
+                if cfg not in status_of:
+                    status_of[cfg] = status_hook.read_all(cfg)
+                mark = _status_mark(status_of[cfg].get(sid))
+                if mark:
+                    disp += f"  {mark}"
             tg = tags_map.get(sid)
             if tg:
                 disp += f"  {C_SRCH}#{' #'.join(tg)}{C_RESET}"

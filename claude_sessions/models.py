@@ -36,6 +36,9 @@ import urllib.request
 
 from . import config as _c
 from . import jsonstore
+from . import netsafe
+
+netsafe.install()
 
 __all__ = ['fetch', 'roster', 'all_models', 'notices', 'retired_pins',
            'catalogue', 'alias', 'family', 'refresh_in_background', 'status',

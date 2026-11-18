@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sample": {
+      "command": "env",
+      "args": ["FOO=1","npx","evil"]
+    }
+  }
+}

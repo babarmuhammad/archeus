@@ -201,9 +201,13 @@ def load_manifest(project_path, proj_folder=None):
             try:
                 with open(p, encoding='utf-8') as f:
                     data = json.load(f)
-                if isinstance(data, dict):
-                    return _migrate(data)
-                return _corrupt()
+                if not isinstance(data, dict):
+                    return _corrupt()
+                if data.get('schema_version', 0) > SCHEMA_VERSION:
+                    m = _corrupt()
+                    m['_newer'] = True
+                    return m
+                return _migrate(data)
             except Exception:
                 return _corrupt()
     return _empty_manifest()
@@ -220,9 +224,8 @@ def save_manifest(project_path, m, proj_folder=None):
     for p in _candidate_paths(project_path, proj_folder):
         try:
             os.makedirs(os.path.dirname(p), exist_ok=True)
-            with open(p, 'w', encoding='utf-8') as f:
-                json.dump(m, f, indent=2)
-            return True
+            if _c.write_json_atomic(p, m):
+                return True
         except Exception:
             continue
     return False
@@ -458,6 +461,8 @@ def update_manifest(project_path, proj_folder, op, **data):
     Best-effort: never raises."""
     try:
         m = load_manifest(project_path, proj_folder)
+        if m.get('_newer'):     # written by a newer archeus: rewriting it would downgrade it
+            return None
         m.pop('_corrupt', None)
         m['project_path'] = project_path or m.get('project_path', '')
         live = _gather_live(project_path, proj_folder)
@@ -516,7 +521,8 @@ def update_manifest(project_path, proj_folder, op, **data):
         m['freshness_score'] = score
         m['safe_to_launch'] = safe
         m['generated_at'] = _now_iso()
-        save_manifest(project_path, m, proj_folder)
+        if not save_manifest(project_path, m, proj_folder):
+            return None
         return m
     except Exception:
         _c.log.exception('workspace manifest update failed')

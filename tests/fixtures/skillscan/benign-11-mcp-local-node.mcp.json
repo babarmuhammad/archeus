@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "local-tools": {
+      "command": "node",
+      "args": ["./tools/server.js"],
+      "env": {"LOG_LEVEL": "info"}
+    }
+  }
+}

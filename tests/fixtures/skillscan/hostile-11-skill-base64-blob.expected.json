@@ -1,0 +1,13 @@
+{
+  "fixture": "hostile-11-skill-base64-blob.md",
+  "kind": "skill",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "long-base64",
+      "line": 11,
+      "match": "YXJjaGV1cyBza2lsbHNj"
+    }
+  ],
+  "note": "A 240-character base64 run alone in a fenced block, outside any data URI, pins the [PROPOSED] 200-character threshold with no command lines."
+}

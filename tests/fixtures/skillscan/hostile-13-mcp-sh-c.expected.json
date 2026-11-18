@@ -1,0 +1,13 @@
+{
+  "fixture": "hostile-13-mcp-sh-c.mcp.json",
+  "kind": "mcp",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "mcp-command-exec",
+      "line": 4,
+      "match": "\"sh\""
+    }
+  ],
+  "note": "An MCP server whose command is the shell wrapper sh -c."
+}

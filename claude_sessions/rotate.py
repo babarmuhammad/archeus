@@ -41,8 +41,11 @@ has not run yet is worse than the bug it fixes.
 """
 
 import os
+import threading
 
 from . import config as _c
+
+_offer_lock = threading.Lock()
 
 #: matches the reference implementation (claude-unlimited's `switch_threshold`).
 #: Not 100: an account that is one request from its cap will refuse mid-turn,
@@ -250,10 +253,12 @@ def offer(path, transcript, sid, why=''):
     if not to:
         _log('%s is out and nothing else has headroom' % name_of(None), why)
         return False, 'no other account has headroom'
-    if recently_offered(sid):
-        return False, 'already offered'
-    from . import quota
-    quota.mark_offered(sid)
+    # ponytail: one process only; across processes two offers can still both pass the check, needs an exclusive create of the stamp
+    with _offer_lock:
+        if recently_offered(sid):
+            return False, 'already offered'
+        from . import quota
+        quota.mark_offered(sid)
     name = name_of(to)
     if not hands_off():
         # `ask` cannot open a window, so the whole of it is reaching the user
@@ -267,9 +272,12 @@ def offer(path, transcript, sid, why=''):
         return False, 'offered %s' % name
     ok, err = continue_session(path, transcript, to)
     note(None, to, why)
-    _notify('Continued on %s' % name,
-            'archeus opened a successor session under %s.' % name if ok
-            else 'Could not open it: %s' % (err or '?'))
+    if ok:
+        _notify('Continued on %s' % name,
+                'archeus opened a successor session under %s.' % name)
+    else:
+        _notify('Could not continue on %s' % name,
+                'Could not open it: %s' % (err or '?'))
     return bool(ok), (err or ('continued on %s' % name))
 
 

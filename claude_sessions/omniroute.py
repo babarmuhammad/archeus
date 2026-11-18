@@ -39,6 +39,10 @@ import time
 import urllib.request
 import urllib.error
 
+from . import netsafe
+
+netsafe.install()
+
 # OmniRoute's own dynamic per-request router (docs/routing/AUTO-COMBO.md) —
 # passing this as the model id makes OmniRoute pick the best currently-
 # healthy free model by a 12-factor score (health/quota/cost/latency/task
@@ -365,8 +369,10 @@ def save_dead(results, clear=False):
     if not clear and os.path.isfile(p):
         try:
             with open(p, encoding='utf-8') as f:
-                cur = json.load(f) or {}
+                cur = json.load(f)
         except Exception:
+            cur = {}
+        if not isinstance(cur, dict):
             cur = {}
     for r in results or []:
         if r.get('ok'):

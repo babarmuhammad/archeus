@@ -1,0 +1,19 @@
+{
+  "claude_code": {
+    "files": {
+      "claude.exe": "UNSET"
+    },
+    "version": "UNSET"
+  },
+  "mxc_sdk": {
+    "files": {
+      "bin/x64/wxc-exec.exe": "UNSET",
+      "package.json": "UNSET"
+    },
+    "version": "1.0.1"
+  },
+  "pins_version": 1,
+  "policy_schema": {
+    "path": "UNSET"
+  }
+}

@@ -27,6 +27,8 @@ def iter_json(path, *, limit=None, offset=0, max_bytes=None, prefilter=None):
     substring (or tuple of substrings) required in the raw line before it is
     parsed at all.
     """
+    if limit == 0:
+        return
     if isinstance(prefilter, str):
         prefilter = (prefilter,)
     read = 0
@@ -38,7 +40,7 @@ def iter_json(path, *, limit=None, offset=0, max_bytes=None, prefilter=None):
     with fh:
         for line in fh:
             if max_bytes is not None:
-                read += len(line)
+                read += len(line.encode('utf-8'))
                 if read > max_bytes:
                     return
             if prefilter and not any(p in line for p in prefilter):

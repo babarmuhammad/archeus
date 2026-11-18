@@ -104,7 +104,8 @@ _FM = re.compile(r'^---\s*\n(.*?)\n---\s*\n?', re.S)
 
 
 def _dirs(project_path=None, cfgdir=None):
-    """[(scope, dir)] — user first, project second (project wins in the UI)."""
+    """[(scope, dir)] — user first, project second (project wins: listing marks
+    it active, read and delete take it first)."""
     out = [('user', os.path.join(cfgdir or _c.config_dir, 'output-styles'))]
     if project_path:
         out.append(('project',
@@ -152,8 +153,9 @@ def listing(project_path=None, cfgdir=None):
                 s.pop('body', None)
                 s.update(builtin=False, scope=scope)
                 styles.append(s)
+    hits = [s for s in styles if s['name'] == active]
     for s in styles:
-        s['active'] = (s['name'] == active)
+        s['active'] = bool(hits) and s is hits[-1]  # project rows come last and win
     return styles
 
 
@@ -163,12 +165,16 @@ def _settings_path(project_path=None, cfgdir=None):
     return os.path.join(cfgdir or _c.config_dir, 'settings.json')
 
 
-def _load(path):
+def _load(path, strict=False):
     import json
     try:
         with open(path, encoding='utf-8') as fh:
             return json.load(fh) or {}
+    except FileNotFoundError:
+        return {}
     except Exception:
+        if strict:
+            raise
         return {}
 
 
@@ -190,7 +196,12 @@ def select(name, project_path=None, cfgdir=None):
     """
     import json
     path = _settings_path(project_path, cfgdir)
-    data = _load(path)
+    try:
+        data = _load(path, strict=True)
+    except Exception:
+        data = None
+    if not isinstance(data, dict):
+        return False, f'{path} is not a JSON object; left unchanged'
     if name == 'default':
         data.pop('outputStyle', None)
     else:
@@ -211,6 +222,11 @@ def _slug(name):
     return re.sub(r'[^A-Za-z0-9_.-]+', '-', str(name or '')).strip('-.')
 
 
+def _one_line(value):
+    """Frontmatter values are single lines: a newline would start a new key."""
+    return ' '.join(str(value).split())
+
+
 def read(name, project_path=None, cfgdir=None):
     """The text behind a style — from disk, from a starter, or the explanation
     that a built-in has no file.
@@ -219,7 +235,7 @@ def read(name, project_path=None, cfgdir=None):
     disk, so `view` rendered "(empty)" on the three styles most people have and
     read as a dead button."""
     slug = _slug(name)
-    for _scope, d in _dirs(project_path, cfgdir):
+    for _scope, d in reversed(_dirs(project_path, cfgdir)):
         for fn in (f'{slug}.md', f'{slug.lower()}.md'):
             p = os.path.join(d, fn)
             if os.path.isfile(p):
@@ -258,14 +274,20 @@ def active_scope(project_path=None, cfgdir=None):
     return ''
 
 
+def _builtin(name):
+    return (name or '').casefold() in [n.casefold() for n, _d in BUILTIN]
+
+
 def save(name, description, body, project_path=None, cfgdir=None):
     """Create or overwrite a custom style."""
     slug = _slug(name)
     if not slug:
         return False, 'A name is required'
+    if _builtin(name):
+        return False, f'{name} is a built-in style: pick another name'
     scope_dir = _dirs(project_path, cfgdir)[-1 if project_path else 0][1]
     path = os.path.join(scope_dir, f'{slug}.md')
-    text = (f'---\nname: {name}\ndescription: {description}\n---\n\n'
+    text = (f'---\nname: {_one_line(name)}\ndescription: {_one_line(description)}\n---\n\n'
             f'{body.strip()}\n')
     if not _c.write_atomic(path, text):
         return False, f'Could not write {path}'
@@ -274,10 +296,10 @@ def save(name, description, body, project_path=None, cfgdir=None):
 
 def delete(name, project_path=None, cfgdir=None):
     """Remove a custom style. Built-ins are not on disk and cannot go."""
-    if name in [n for n, _d in BUILTIN]:
+    if _builtin(name):
         return False, f'{name} ships with Claude Code — nothing to delete'
     slug = _slug(name)
-    for _scope, d in _dirs(project_path, cfgdir):
+    for _scope, d in reversed(_dirs(project_path, cfgdir)):
         p = os.path.join(d, f'{slug}.md')
         if os.path.isfile(p):
             try:

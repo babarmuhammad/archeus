@@ -59,6 +59,9 @@ SKIP = {
     'packaging/legacy-name/pyproject.toml',
     'packaging/legacy-name/README.md',
     'tests/test_migration.py',
+    # the migration's gap tests: they build old-name fixtures to prove they are moved
+    'tests/test_gaps3_claude_sessions_migrate_a.py',
+    'tests/test_gaps3_claude_sessions_migrate_b.py',
     'tests/test_no_old_brand_string.py',
     'tools/_rename_brand.py',
     'tools/_mut_migration.py',
@@ -84,6 +87,12 @@ HOLD = {
     'the same as claudectl': '\x00HOLD-FAQ-Q\x00',
     'claudectl was renamed to archeus': '\x00HOLD-FAQ-A\x00',
     'pip install -U claudectl': '\x00HOLD-FAQ-UPGRADE\x00',
+    # Two real names in the V1 architecture, permanent like the README line: the
+    # legacy settings file the P25.5 migration reads (`migrate.py` knows both
+    # names), and the private growth repository, which is still called that.
+    # Renaming either would point the documents at files that do not exist.
+    'old `claudectl.json`': '\x00HOLD-LEGACY-SETTINGS\x00',
+    '`claudectl-growth`': '\x00HOLD-GROWTH-REPO\x00',
 }
 
 SUBS = (('claudectl', 'archeus'),

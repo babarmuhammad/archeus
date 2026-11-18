@@ -10,6 +10,7 @@ not exercised: a subprocess test would be flaky and would leak console windows.
 import http.client
 import json
 import os
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -543,3 +544,104 @@ def test_a_failed_spawn_releases_the_claim(monkeypatch, tmp_path):
     ok, msg = failover.ensure_running(prof)
     assert not ok and 'could not start' in msg
     assert failover._daemon(prof).read_lock() is None
+
+
+def _sleeper():
+    import subprocess as _sp
+    return _sp.Popen([sys.executable, '-I', '-c', 'import time; time.sleep(60)'])
+
+
+def test_stop_never_kills_a_pid_that_is_not_the_process_that_wrote_the_lock():
+    """A crashed daemon's lock outlives it and the OS hands its pid to anything:
+    stop() terminated whatever owned it (audit H-07)."""
+    from claude_sessions import proc
+    stranger = _sleeper()
+    try:
+        d = failover._daemon(_P)
+        os.makedirs(os.path.dirname(d.lock_path()), exist_ok=True)
+        for lock in ({'pid': stranger.pid, 'port': 20129, 'started': 0},
+                     {'pid': stranger.pid, 'port': 20129, 'started': 0, 'ctime': 12345}):
+            with open(d.lock_path(), 'w', encoding='utf-8') as f:
+                json.dump(lock, f)
+            ok, _msg = d.stop()
+            assert not ok and stranger.poll() is None
+        d.write_lock(20129)
+        assert d.read_lock()['ctime'] == proc.process_create_time(os.getpid())
+        d.clear_lock()
+    finally:
+        stranger.kill()
+        stranger.wait()
+
+
+def test_a_refused_stop_keeps_the_lock_of_a_daemon_it_cannot_identify():
+    """A daemon started before the lock carried a creation time is still ours:
+    deleting its lock on a refused stop orphaned it (R3)."""
+    from claude_sessions import proc
+    child = _sleeper()
+    try:
+        d = failover._daemon(_P)
+        os.makedirs(os.path.dirname(d.lock_path()), exist_ok=True)
+        with open(d.lock_path(), 'w', encoding='utf-8') as f:
+            json.dump({'pid': child.pid, 'port': 20129, 'started': 0}, f)
+        ok, msg = d.stop()
+        assert not ok and 'no creation time' in msg and child.poll() is None
+        assert d.read_lock()['pid'] == child.pid
+        assert d.stop()[0] is False                       # and a second stop still finds it
+        with open(d.lock_path(), 'w', encoding='utf-8') as f:
+            json.dump({'pid': child.pid, 'port': 20129, 'started': 0,
+                       'ctime': proc.process_create_time(child.pid) + 1}, f)
+        assert d.stop()[0] is False
+        assert d.read_lock() is None and child.poll() is None   # another process's pid: lock goes
+    finally:
+        child.kill()
+        child.wait()
+
+
+def test_a_stop_that_fails_to_kill_the_daemon_keeps_the_lock(monkeypatch):
+    from claude_sessions import proc
+    child = _sleeper()
+    try:
+        d = failover._daemon(_P)
+        os.makedirs(os.path.dirname(d.lock_path()), exist_ok=True)
+        with open(d.lock_path(), 'w', encoding='utf-8') as f:
+            json.dump({'pid': child.pid, 'port': 20129, 'started': 0,
+                       'ctime': proc.process_create_time(child.pid)}, f)
+        monkeypatch.setattr(proc, 'kill_pid_tree', lambda pid, ctime: False)
+        assert d.stop()[0] is False and d.read_lock()['pid'] == child.pid
+    finally:
+        child.kill()
+        child.wait()
+
+
+def test_stop_ends_the_process_whose_creation_time_the_lock_recorded():
+    from claude_sessions import proc
+    child = _sleeper()
+    try:
+        d = failover._daemon(_P)
+        os.makedirs(os.path.dirname(d.lock_path()), exist_ok=True)
+        with open(d.lock_path(), 'w', encoding='utf-8') as f:
+            json.dump({'pid': child.pid, 'port': 20129, 'started': 0,
+                       'ctime': proc.process_create_time(child.pid)}, f)
+        assert d.stop() == (True, 'stopped')
+        assert child.wait(timeout=10) is not None
+    finally:
+        child.kill()
+        child.wait()
+
+
+def test_a_spawn_claim_is_never_a_daemon_to_kill(monkeypatch):
+    """The claim records the spawning caller's pid and creation time, which match
+    a live process: stop() ended the GUI or TUI that was starting the daemon."""
+    from claude_sessions import proc
+    killed = []
+    monkeypatch.setattr(proc, 'kill_pid_tree', lambda pid, ctime: killed.append(pid) or True)
+    d = failover._daemon(_P)
+    assert d.claim_spawn(20129) is True
+    ok, msg = d.stop()
+    assert killed == [] and not ok and 'starting' in msg
+    assert d.read_lock()['claim'] is True                     # the claimer still holds it
+    claim = dict(d.read_lock(), started=0)
+    with open(d.lock_path(), 'w', encoding='utf-8') as f:
+        json.dump(claim, f)
+    assert d.stop() == (True, 'no %s recorded' % d.label) and killed == []
+    assert d.read_lock() is None

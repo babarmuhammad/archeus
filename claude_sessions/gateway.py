@@ -42,7 +42,10 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler
 
 from . import config as _c
+from . import netsafe
 from . import proxy_base as _proxy
+
+netsafe.install()
 
 _CONNECT_TIMEOUT = 15
 _READ_TIMEOUT = 600        # a local model can be slow; the ping keeps the client alive
@@ -247,8 +250,9 @@ def to_anthropic_response(data, model):
     choice = ((data.get('choices') or [{}])[0]) or {}
     msg = choice.get('message') or {}
     content = []
-    if msg.get('content'):
-        content.append({'type': 'text', 'text': msg['content']})
+    text = _flatten_text(msg.get('content'))
+    if text:
+        content.append({'type': 'text', 'text': text})
     for i, call in enumerate(msg.get('tool_calls') or []):
         fn = call.get('function') or {}
         content.append({'type': 'tool_use',
@@ -272,7 +276,10 @@ def to_anthropic_response(data, model):
 def _loads_or_empty(s):
     """A model that emits malformed tool arguments is common enough on local
     backends that it must not take the turn down: an empty input reaches the tool
-    and comes back as a normal tool error the model can react to."""
+    and comes back as a normal tool error the model can react to. Some backends
+    send the arguments already parsed."""
+    if isinstance(s, dict):
+        return s
     try:
         v = json.loads(s or '{}')
         return v if isinstance(v, dict) else {'value': v}
@@ -474,14 +481,21 @@ class _Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlsplit(self.path).path
         try:
             length = int(self.headers.get('Content-Length') or 0)
+            if length < 0:
+                raise ValueError(length)
         except ValueError:
-            length = 0
+            # the body was not read, so its bytes would open the next request
+            self.close_connection = True
+            return _proxy.write_json(self, 400, {'type': 'error', 'error': {
+                'type': 'invalid_request_error', 'message': 'bad Content-Length'}}) and None
         raw = self.rfile.read(length) if length else b''
         try:
             body = json.loads(raw.decode('utf-8', 'replace') or '{}')
+            if not isinstance(body, dict):
+                raise ValueError('not an object')
         except Exception:
             return _proxy.write_json(self, 400, {'type': 'error', 'error': {
-                'type': 'invalid_request_error', 'message': 'body is not JSON'}}) and None
+                'type': 'invalid_request_error', 'message': 'body is not a JSON object'}}) and None
 
         if path.endswith('/v1/messages/count_tokens'):
             # No OpenAI-shape equivalent. Claude Code falls back gracefully when

@@ -343,6 +343,22 @@ def test_the_repair_runs_after_the_migration_flag_is_set(old_home, monkeypatch):
     assert 'gone' not in cmd
 
 
+def test_the_repair_takes_only_what_hooks_calls_a_former_install(tmp_path, monkeypatch):
+    """One rule, `hooks.former_script`, for the repair and for install/uninstall: a
+    relative path resolves where the hook runs, and a dead absolute one outside a
+    package directory of ours was written by someone else."""
+    from claude_sessions import hooks
+    pkg = os.path.dirname(os.path.abspath(migrate.__file__))
+    monkeypatch.chdir(tmp_path)
+    for theirs in ('"python" "./company/recall_hook.py"', 'python company/recall_hook.py',
+                   '"python" "%s"' % (tmp_path / 'gone' / 'recall_hook.py')):
+        assert migrate._repoint(theirs, pkg) == theirs
+        assert not hooks._is_ours({'command': theirs}, 'recall_hook.py')
+    ours = '"python" "%s"' % (tmp_path / 'gone' / 'claude_sessions' / 'recall_hook.py')
+    assert migrate._repoint(ours, pkg) == hooks._memory_hook_command()
+    assert hooks._is_ours({'command': ours}, 'recall_hook.py')
+
+
 def test_a_repair_does_not_stamp_the_install_as_having_come_from_the_old_name(
         old_home):
     """`_mark_done` reads the list of things that moved to decide whether to
@@ -375,7 +391,7 @@ def test_the_statusline_keeps_the_windowless_interpreter(old_home, monkeypatch):
     _write(str(home / 'settings.json'), json.dumps({
         'statusLine': {'type': 'command',
                        'command': '"C:\\gone\\pythonw.exe" "%s"'
-                                  % str(home / 'gone' / 'statusline_cli.py')}}))
+                                  % str(home / 'gone' / 'claude_sessions' / 'statusline_cli.py')}}))
     migrate.repair_commands([str(home)])
     sl = json.load(io.open(str(home / 'settings.json'),
                            encoding='utf-8'))['statusLine']['command']
@@ -472,6 +488,23 @@ def test_a_half_written_block_is_left_exactly_as_it_is(swept):
     _write(str(proj / 'CLAUDE.md'), text)
     migrate.sweep([str(home)])
     assert _md(str(proj / 'CLAUDE.md')) == text, 'a half pair was touched'
+
+
+def test_a_fenced_example_of_the_new_name_is_not_a_replacement(swept):
+    """A closed code fence that quotes the new MEMORY START marker is prose, not a
+    block (`_markers` skips fences). The replacement gate must ask for a real
+    well-formed block, so the legacy block beside it is renamed, not deleted."""
+    home, proj = swept
+    text = ('# p\n\n```\n<!-- ARCHEUS:MEMORY:START -->\nexample\n```\n\n%s\n'
+            % OLD_MEM)
+    _write(str(proj / 'CLAUDE.md'), text)
+    fixed, failed = migrate.sweep([str(home)])
+    assert not failed, failed
+
+    out = _md(str(proj / 'CLAUDE.md'))
+    assert 'stale digest' in out, 'the legacy block was deleted'
+    assert '<!-- ARCHEUS:MEMORY:START -->\nstale digest\n<!-- ARCHEUS:MEMORY:END -->' in out, \
+        'the legacy block was not renamed in place'
 
 
 def test_the_keep_fence_is_renamed_and_never_removed(swept):
@@ -681,3 +714,49 @@ def test_the_repair_covers_every_harness_archeus_writes_hooks_for():
     assert writes_hooks == ['claude'], (
         '%s now takes hooks from archeus — teach migrate.repair_commands its '
         'config reader rather than writing a second repair' % writes_hooks)
+
+
+def _md_bytes(path):
+    with open(path, 'rb') as f:
+        return f.read()
+
+
+def test_crlf_prose_survives_a_rename(swept):
+    """A CRLF file read in text mode came back as LF, and the rename pass wrote
+    that back: every line of the user's own prose changed its ending."""
+    home, proj = swept
+    prose = b'# p\r\n\r\nUSER\r\n\r\n'
+    path = str(proj / 'CLAUDE.md')
+    with open(path, 'wb') as f:
+        f.write(prose + OLD_MEM.encode() + b'\r\nTAIL\r\n')
+    _fixed, failed = migrate.sweep([str(home)])
+    assert not failed, failed
+    assert _md_bytes(path) == (prose + OLD_MEM.replace('CLAUDECTL', 'ARCHEUS').encode()
+                               + b'\r\nTAIL\r\n')
+
+
+def test_an_undecodable_file_is_left_untouched_and_logged(swept, caplog):
+    """`errors='ignore'` dropped the invalid bytes and renamed the block around
+    them. A file that is not UTF-8 is unreadable, so it is logged like any other
+    unreadable file and not rewritten."""
+    home, proj = swept
+    path = str(proj / 'CLAUDE.md')
+    original = b'# p\nUSER \xff\xfe\n' + OLD_MEM.encode() + b'\n'
+    with open(path, 'wb') as f:
+        f.write(original)
+    migrate.sweep([str(home)])
+    assert _md_bytes(path) == original
+    assert 'could not read' in caplog.text
+
+
+def test_legacy_block_removal_keeps_crlf_outside_bytes(swept):
+    """Dropping a superseded block consumes only its own closing newline; the
+    CRLF prose on both sides of it survives byte for byte."""
+    home, proj = swept
+    prose = b'# p\r\n\r\nUSER\r\n\r\n'
+    path = str(proj / 'CLAUDE.md')
+    with open(path, 'wb') as f:
+        f.write(prose + OLD_MEM.encode() + b'\r\n\r\n' + NEW_MEM.encode() + b'\r\nTAIL\r\n')
+    _fixed, failed = migrate.sweep([str(home)])
+    assert not failed, failed
+    assert _md_bytes(path) == prose + b'\r\n' + NEW_MEM.encode() + b'\r\nTAIL\r\n'

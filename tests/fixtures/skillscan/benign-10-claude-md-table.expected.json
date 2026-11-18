@@ -1,0 +1,7 @@
+{
+  "fixture": "benign-10-claude-md-table.md",
+  "kind": "claude_md",
+  "verdict": "benign",
+  "findings": [],
+  "note": "Markdown table, bullet lists and curly quotes are ordinary formatting."
+}

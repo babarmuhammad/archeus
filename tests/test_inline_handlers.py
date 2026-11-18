@@ -3,7 +3,7 @@ r"""A value going into an inline handler crosses two parsers, not one.
 The markup writes `onchange="ccSet('k',this,'${esc(a.dir)}')"`. The browser
 unescapes the ATTRIBUTE first, and then JS parses what is left as a string
 literal — so a Windows path's backslashes are read as escape sequences:
-`C:\Users\mab\.claude` becomes `C:Usersmab.claude`. The settings editor posted
+`C:\Users\<user>\.claude` becomes `C:Users<user>.claude`. The settings editor posted
 that mangled value as `cfgdir`, the account allowlist correctly refused it, and
 every save came back "invalid cfgdir".
 

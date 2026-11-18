@@ -1,0 +1,13 @@
+{
+  "fixture": "hostile-07-agent-html-comment-override.md",
+  "kind": "agent",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "instruction-override",
+      "line": 8,
+      "match": "ignore all previous instructions"
+    }
+  ],
+  "note": "The override is smuggled into a one-line HTML comment in an agent body."
+}

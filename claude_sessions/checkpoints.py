@@ -28,10 +28,17 @@ import re
 from . import config as _c
 
 _VER = re.compile(r'^([0-9a-f]{8,64})@v(\d+)$')
+_PLAIN_SID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]*\Z')
 
 
 def store_dir(cfgdir=None):
     return os.path.join(cfgdir or _c.config_dir, 'file-history')
+
+
+def _sdir(sid, cfgdir=None):
+    if not _PLAIN_SID.match(sid):
+        raise ValueError(f'not a plain session id: {sid!r}')
+    return os.path.join(store_dir(cfgdir), sid)
 
 
 def _key(path):
@@ -95,7 +102,7 @@ def history(sid, jsonl, cfgdir=None):
     session edited resolve to a snapshot — i.e. the naming scheme moved. The
     caller must hide the panel in that case rather than guess.
     """
-    sdir = os.path.join(store_dir(cfgdir), sid)
+    sdir = _sdir(sid, cfgdir)
     if not os.path.isdir(sdir):
         return {'recognised': True, 'files': [], 'orphans': 0, 'store': False}
     bykey = _versions(sdir)
@@ -126,8 +133,7 @@ def history(sid, jsonl, cfgdir=None):
 
 def read_version(sid, path, v, cfgdir=None, limit=400000):
     """One snapshot's contents, or None. Read-only: nothing here restores."""
-    sdir = os.path.join(store_dir(cfgdir), sid)
-    full = os.path.join(sdir, f'{_key(path)}@v{int(v)}')
+    full = os.path.join(_sdir(sid, cfgdir), f'{_key(path)}@v{int(v)}')
     if not os.path.isfile(full):
         return None
     try:

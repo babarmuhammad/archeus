@@ -114,7 +114,10 @@ def set_environment(entries, cfgdir=None):
         if e and e != DEFAULTS_SENTINEL and e not in clean:
             clean.append(e)
     s = hooks._load(cfgdir)
-    am = dict(s.get('autoMode') or {})
+    cur = s.get('autoMode')
+    if cur is not None and not isinstance(cur, dict):
+        return False, 'autoMode in settings.json is not an object; not changed'
+    am = dict(cur or {})
     if not clean:
         am.pop('environment', None)
     else:
@@ -201,11 +204,13 @@ def record(project_path, tool, command, reason):
     """Append one denial. Called by the hook; kept here so the format has one
     writer and one reader."""
     try:
+        from archeus.core.redact import redact
         from . import store
         d = store.workdir(project_path)
+        # redacted before the cut, which could leave a token too short to recognise
         line = json.dumps({'ts': round(time.time()), 'tool': tool or '',
-                           'command': (command or '')[:500],
-                           'reason': (reason or '')[:300]}, ensure_ascii=False)
+                           'command': redact(command or '')[:500],
+                           'reason': redact(reason or '')[:300]}, ensure_ascii=False)
         p = os.path.join(d, 'denied.jsonl')
         with open(p, 'a', encoding='utf-8') as f:
             f.write(line + '\n')
@@ -232,7 +237,9 @@ def _rotate(path):
             f.seek(-_KEEP_BYTES, os.SEEK_END)
             tail = f.read()
         tail = tail.split(b'\n', 1)[1] if b'\n' in tail else tail
-        with open(path, 'wb') as f:
+        tmp = path + '.tmp'
+        with open(tmp, 'wb') as f:
             f.write(tail)
+        os.replace(tmp, path)
     except Exception:
         pass

@@ -1,0 +1,13 @@
+{
+  "fixture": "hostile-17-mcp-server-named-bash.mcp.json",
+  "kind": "mcp",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "tool-name-collision",
+      "line": 3,
+      "match": "\"Bash\""
+    }
+  ],
+  "note": "An MCP server keyed exactly like the built-in Bash tool collides; the node command itself is plain, so no mcp-command-exec applies."
+}

@@ -1,0 +1,8 @@
+{
+  "fixture": "benign-18-skill-drift-b.md",
+  "kind": "skill",
+  "verdict": "benign",
+  "findings": [],
+  "note": "Second read byte-identical to benign-17, so the description did not drift and nothing is reported.",
+  "pair_with": "benign-17-skill-drift-a.md"
+}
